@@ -8,37 +8,38 @@
 #define MAX_WORD_LENGTH 500 // Maximum length of a word to a huge string, but we won't reach that
 
 int findInDirection(int x, int y, char **matrix, int MaxX, int MaxY, char word[], int tX, int tY, int wordLength){
-    int lookX;
-    int lookY;
-    int wordI = 0;
-    
+    // printf("x: %d, y: %d, tx: %d, ty: %d\n", x, y, tX, tY);
+    int lookX = tX+x;
+    int lookY = tY+y;
+    int wordI = 1;
+
     while (wordI<wordLength){
-        wordI++;
-        printf("Look Around %d %d\n", x, y);
-    
-        lookX = tY+x;
-        lookY = tY+y;
-        
-        if (lookX > MaxX || lookY > MaxY){
+        // Check if it's inside the bounds of the matrix
+        if (lookX >= MaxX || lookY >= MaxY || lookX < 0 || lookY < 0){
             printf("Out of bounds\n");
             return 0;
         }
-
+        
+        // Now we look and check if it's what we want to find
+        printf("%c == %c\n", matrix[lookX][lookY], word[wordI]);
         if (matrix[lookX][lookY] == word[wordI]) {
-            printf("Found in direction\n");
-            printf("%c == %c\n", matrix[lookX][lookY], word[wordI]);
+            // printf("Found in direction: %c\n", word[wordI]);
+            // Look again in that direction, and up the index
+            char oldTarget = word[wordI];
             wordI++;
-            tX++;
-            tY++;
+            lookX +=x;
+            lookY +=y;
+            // printf("Old target: %c New Target: %c\n", oldTarget, word[wordI]);
+            
         }
         else {
-            printf("Did not find in this direction\n");
+            // printf("Did not find \n");
             return 0;
         }
     }
 
     // If it has finished, return 1
-    if (wordI<=wordLength){
+    if (wordI==wordLength){
         printf("Finished\n");
         return 1;
     }
@@ -65,17 +66,14 @@ int searchWord(char **matrix, int ROW, int COL, char word[]){
             }
             // Found the first letter of the word somewhere, 
             // Now we have to look around to see if we can find the word in any direction
-            printf("Found starting letter");
-
-            // Here we iterate through the possible directions that it'll look at
+              // Here we iterate through the possible directions that it'll look at
             for (int x=0; x<=1; x++){
                 for (int y=0; y<=1; y++){
                     // The idea is that here we'll laungh one children for each direction
                     // Check if it's not the center
                     if (x==0 && y==0){
                         continue;
-                    } 
-
+                     }
                     result = findInDirection(x,y,matrix,ROW,COL,word,i,j, wordLength); 
                     if (result == 1) {
                         printf("Finished\n");
@@ -87,7 +85,6 @@ int searchWord(char **matrix, int ROW, int COL, char word[]){
     }
     return 0;
 }
-
 
 int main(int argc, char *argv[]) {
     FILE *file;
