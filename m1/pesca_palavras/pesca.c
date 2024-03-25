@@ -16,12 +16,12 @@ int findInDirection(int x, int y, char **matrix, int MaxX, int MaxY, char word[]
     while (wordI<wordLength){
         // Check if it's inside the bounds of the matrix
         if (lookX >= MaxX || lookY >= MaxY || lookX < 0 || lookY < 0){
-            printf("Out of bounds\n");
+            // printf("Out of bounds\n");
             return 0;
         }
         
         // Now we look and check if it's what we want to find
-        printf("%c == %c\n", matrix[lookX][lookY], word[wordI]);
+        // printf("%c == %c\n", matrix[lookX][lookY], word[wordI]);
         if (matrix[lookX][lookY] == word[wordI]) {
             // printf("Found in direction: %c\n", word[wordI]);
             // Look again in that direction, and up the index
@@ -40,7 +40,6 @@ int findInDirection(int x, int y, char **matrix, int MaxX, int MaxY, char word[]
 
     // If it has finished, return 1
     if (wordI==wordLength){
-        printf("Finished\n");
         return 1;
     }
     return 0;
@@ -69,6 +68,7 @@ int searchWord(char **matrix, int ROW, int COL, char word[]){
               // Here we iterate through the possible directions that it'll look at
             for (int x=0; x<=1; x++){
                 for (int y=0; y<=1; y++){
+                    // Run one children per direction afterwards
                     // The idea is that here we'll laungh one children for each direction
                     // Check if it's not the center
                     if (x==0 && y==0){
@@ -160,17 +160,16 @@ int main(int argc, char *argv[]) {
     for(i = 0; i < wordCount; i++) {
         printf("%s\n", words[i]);
     }
-
-    searchWord(matrix, ROW, COL, words[0]);
+    
 
     // Now we're basically set to start working on finding the words
 
-    // char find;
     // int_t childpid;
-    // for (i=0; i<wordCount; i++){
-    //     find = words[i];
-    //     childpid = fork();
-    // }
+    for (i=0; i<wordCount; i++){
+        // childpid = fork();
+        // check if it's child and run the searchword
+        searchWord(matrix, ROW, COL, words[i]);
+    }
     
     printf("Freeing memory for the matrix\n");
     for (i = 0; i < ROW; i++) {
