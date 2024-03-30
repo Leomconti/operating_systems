@@ -23,6 +23,7 @@ o resultado gerado e responda:
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #define NUM_THREADS 3
 
@@ -38,7 +39,7 @@ void *funcao_thread(void *arg) {
     return NULL;
 }
 
-int main() {
+int main(void) {
     pthread_t threads[NUM_THREADS];
     int ids[NUM_THREADS];
     int i;

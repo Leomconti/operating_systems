@@ -9,6 +9,21 @@
 #define MAX_WORD_LENGTH 500
 #define DIRECTIONS 8
 
+// To have the up down right left etc. with the name
+typedef struct {
+    int x;
+    int y;
+    char *directionName;
+} Direction;
+
+// To return the coordinates and direction name
+typedef struct {
+    int wordI;
+    int row;
+    int col;
+    char *direction;
+} foundResult;
+
 typedef struct{
     char **matrix;
     int ROW;
@@ -26,7 +41,19 @@ typedef struct{
     int currX;
     int currY;
     int wordLength;
+    char *directionName;
 } findInDirectionArgs;
+
+Direction directions[] = {
+    { -1,  0, "cima"},
+    {  1,  0, "baixo"},
+    {  0,  1, "direita"},
+    {  0, -1, "esquerda"},
+    { -1, -1, "cima/esquerda"},
+    { -1,  1, "cima/direita"},
+    {  1, -1, "baixo/esquerda"}, 
+    {  1,  1, "baixo/direita"}
+};
 
 void *findInDirection(void *args){
     findInDirectionArgs *parsedArgs = (findInDirectionArgs *)args;
@@ -40,6 +67,7 @@ void *findInDirection(void *args){
     int currX = parsedArgs->currX;
     int currY = parsedArgs->currY;
     int wordLength = parsedArgs->wordLength;
+    char *directionName = parsedArgs->directionName;
 
     int lookX = currX+x;
     int lookY = currY+y;
@@ -49,7 +77,6 @@ void *findInDirection(void *args){
         if (lookX >= maxX || lookY >= maxY || lookX < 0 || lookY < 0){
             return (void *)0;
         }
-        
         // Now we look and check if it's what we want to find
         if (matrix[lookX][lookY] == word[wordI]) {
             // Look again in that direction, and up the index
@@ -57,7 +84,6 @@ void *findInDirection(void *args){
             wordI++;
             lookX +=x;
             lookY +=y;
-            
         }
         else {
             return (void *)0;
@@ -65,46 +91,49 @@ void *findInDirection(void *args){
     }
 
     if (wordI==wordLength){
-        return (void *)1;
+        foundResult *result = malloc(sizeof(foundResult));
+        if (result != NULL) {
+            result->row = currX;
+            result->col = currY;
+            result->direction = directionName;
+            return result;
+        }
     }
-    return (void *) 0;
+    return NULL;
 } 
 
 void *exploreDirection(char **matrix, int ROW, int COL, char *word, int startX, int startY, int wordLength) {
-    int result;
-    int i = 0;
     pthread_t directionThreads[DIRECTIONS];
     findInDirectionArgs directionArgs[DIRECTIONS];
     int results[DIRECTIONS] = {0};
     int directionCount = 0;
     // TODO: instead of for loop, I need 8 directions
     // cima, baixo, direita, esquerda, cima direita, cima esquerda, baixo direita, baixo esquerda
-    for (int x = -1; x <= 1; x++) {
-        for (int y = -1; y <= 1; y++) {
-            if (x == 0 && y == 0) continue;
+    for (int i = 0; i < DIRECTIONS; i++) {
+        directionArgs[i].x = directions[i].x;
+        directionArgs[i].y = directions[i].y;
+        directionArgs[i].matrix = matrix;
+        directionArgs[i].maxX = ROW;
+        directionArgs[i].maxY = COL;
+        directionArgs[i].word = word;
+        directionArgs[i].currX = startX;
+        directionArgs[i].currY = startY;
+        directionArgs[i].wordLength = wordLength;
+        directionArgs[i].directionName = directions[i].directionName;
 
-            directionArgs[i].x = x;
-            directionArgs[i].y = y;
-            directionArgs[i].matrix = matrix;
-            directionArgs[i].maxX = ROW;
-            directionArgs[i].maxY = COL;
-            directionArgs[i].word = word;
-            directionArgs[i].currX = startX;
-            directionArgs[i].currY = startY;
-            directionArgs[i].wordLength = wordLength;
-
-            pthread_create(&directionThreads[i], NULL, findInDirection, &directionArgs[i]);
-            i++;
-        }
+        pthread_create(&directionThreads[i], NULL, findInDirection, &directionArgs[i]);
+        directionCount++;
     }
 
-    for (int j = 0; j< i; j++) {
-        void *status;
-        pthread_join(directionThreads[j], &status);
-        results[j] = (int)(size_t)status;
-        if (results[j] == 1) {
-            printf("Word found.\n");
+    for (int j = 0; j<directionCount; j++) {
+        foundResult *result;
+        pthread_join(directionThreads[j], (void **)&result);
+        if (result != NULL) {
+            printf("Word found at [%d, %d] heading %s.\n", result->row, result->col, result->direction);
+            free(result); // move this further if we're going to use elsewhere
             break;
+        } else {
+         printf("Word not found here\n");
         }
     }
     return NULL;
@@ -218,6 +247,8 @@ int main(int argc, char *argv[]) {
     }
     
     // Wait for all to finish
+    // Here we'll gather the results, getting the direction and coordinates
+    // where the words were found
     for (i=0; i<wordCount; i++){
         pthread_join(&searchThreads[i], NULL);
     }

@@ -6,8 +6,8 @@
       "type": "lldb",
       "request": "launch",
       "args": [],
-      "cwd": "/Users/leonardomosimannconti/university/operating_systems/m1/atividades/threads",
-      "program": "/Users/leonardomosimannconti/university/operating_systems/m1/atividades/threads/build/Debug/outDebug"
+      "cwd": "/Users/leonardomosimannconti/university/operating_systems/m1/atividades/processes",
+      "program": "/Users/leonardomosimannconti/university/operating_systems/m1/atividades/processes/build/Debug/outDebug"
     }
   ]
 }
