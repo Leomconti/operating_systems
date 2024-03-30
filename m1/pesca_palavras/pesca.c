@@ -3,55 +3,119 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <pthread.h>
 
-#define MAX_WORDS 20 // Maximum number of words we set to 20
-#define MAX_WORD_LENGTH 500 // Maximum length of a word to a huge string, but we won't reach that
+#define MAX_WORDS 20
+#define MAX_WORD_LENGTH 500
+#define DIRECTIONS 8
 
-int findInDirection(int x, int y, char **matrix, int MaxX, int MaxY, char word[], int tX, int tY, int wordLength){
-    // printf("x: %d, y: %d, tx: %d, ty: %d\n", x, y, tX, tY);
-    int lookX = tX+x;
-    int lookY = tY+y;
+typedef struct{
+    char **matrix;
+    int ROW;
+    int COL;
+    char *word;
+} searchWordArgs;
+
+typedef struct{
+    int x;
+    int y;
+    char **matrix;
+    int maxX;
+    int maxY;
+    char *word;
+    int currX;
+    int currY;
+    int wordLength;
+} findInDirectionArgs;
+
+void *findInDirection(void *args){
+    findInDirectionArgs *parsedArgs = (findInDirectionArgs *)args;
+
+    int x = parsedArgs->x;
+    int y = parsedArgs->y;
+    char **matrix = parsedArgs->matrix;
+    int maxX = parsedArgs->maxX;
+    int maxY = parsedArgs->maxY;
+    char *word = parsedArgs->word;
+    int currX = parsedArgs->currX;
+    int currY = parsedArgs->currY;
+    int wordLength = parsedArgs->wordLength;
+
+    int lookX = currX+x;
+    int lookY = currY+y;
     int wordI = 1;
 
     while (wordI<wordLength){
-        // Check if it's inside the bounds of the matrix
-        if (lookX >= MaxX || lookY >= MaxY || lookX < 0 || lookY < 0){
-            // printf("Out of bounds\n");
-            return 0;
+        if (lookX >= maxX || lookY >= maxY || lookX < 0 || lookY < 0){
+            return (void *)0;
         }
         
         // Now we look and check if it's what we want to find
-        // printf("%c == %c\n", matrix[lookX][lookY], word[wordI]);
         if (matrix[lookX][lookY] == word[wordI]) {
-            // printf("Found in direction: %c\n", word[wordI]);
             // Look again in that direction, and up the index
             char oldTarget = word[wordI];
             wordI++;
             lookX +=x;
             lookY +=y;
-            // printf("Old target: %c New Target: %c\n", oldTarget, word[wordI]);
             
         }
         else {
-            // printf("Did not find \n");
-            return 0;
+            return (void *)0;
         }
     }
 
-    // If it has finished, return 1
     if (wordI==wordLength){
-        return 1;
+        return (void *)1;
     }
-    return 0;
+    return (void *) 0;
 } 
 
-int searchWord(char **matrix, int ROW, int COL, char word[]){
-    // In this function we'll traverse the matrix looking for the words
-    // My first idea is:
-    // We start reading the matrix, if we find the letter that starts the word, we 
-    // Look at each direction and if it contains the second letter we do the same there
-    // If it doesn't go through we come back
-    // It will use a recursive approach, basically a maze solver
+void *exploreDirection(char **matrix, int ROW, int COL, char *word, int startX, int startY, int wordLength) {
+    int result;
+    int i = 0;
+    pthread_t directionThreads[DIRECTIONS];
+    findInDirectionArgs directionArgs[DIRECTIONS];
+    int results[DIRECTIONS] = {0};
+    int directionCount = 0;
+    // TODO: instead of for loop, I need 8 directions
+    // cima, baixo, direita, esquerda, cima direita, cima esquerda, baixo direita, baixo esquerda
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            if (x == 0 && y == 0) continue;
+
+            directionArgs[i].x = x;
+            directionArgs[i].y = y;
+            directionArgs[i].matrix = matrix;
+            directionArgs[i].maxX = ROW;
+            directionArgs[i].maxY = COL;
+            directionArgs[i].word = word;
+            directionArgs[i].currX = startX;
+            directionArgs[i].currY = startY;
+            directionArgs[i].wordLength = wordLength;
+
+            pthread_create(&directionThreads[i], NULL, findInDirection, &directionArgs[i]);
+            i++;
+        }
+    }
+
+    for (int j = 0; j< i; j++) {
+        void *status;
+        pthread_join(directionThreads[j], &status);
+        results[j] = (int)(size_t)status;
+        if (results[j] == 1) {
+            printf("Word found.\n");
+            break;
+        }
+    }
+    return NULL;
+}
+
+void *searchWord(void *args){
+    searchWordArgs *parsedArgs = (searchWordArgs *)args;
+    char **matrix = parsedArgs->matrix;
+    int ROW = parsedArgs->ROW;
+    int COL = parsedArgs->COL;
+    char *word = parsedArgs->word;
     int result = 1; 
     char curr;
     int wordLength = strlen(word);
@@ -59,31 +123,14 @@ int searchWord(char **matrix, int ROW, int COL, char word[]){
     for (int i=0; i<ROW; i++){
         for (int j=0; j<COL; j++){
             curr=matrix[i][j];
-            // Let's find the first letter
-            if (curr != word[0]){
-                continue;
-            }
-            // Found the first letter of the word somewhere, 
-            // Now we have to look around to see if we can find the word in any direction
-              // Here we iterate through the possible directions that it'll look at
-            for (int x=0; x<=1; x++){
-                for (int y=0; y<=1; y++){
-                    // Run one children per direction afterwards
-                    // The idea is that here we'll laungh one children for each direction
-                    // Check if it's not the center
-                    if (x==0 && y==0){
-                        continue;
-                     }
-                    result = findInDirection(x,y,matrix,ROW,COL,word,i,j, wordLength); 
-                    if (result == 1) {
-                        printf("Finished\n");
-                        return 1;
-                    }
-                }
+            // Find the first letter of the word to start searching
+            // TODO: convert to threads too, and stop as soon as one gets
+            // the result
+            if (curr == word[0]){
+                exploreDirection(matrix, ROW, COL, word, i, j, wordLength);
             }
         }
     }
-    return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -113,13 +160,12 @@ int main(int argc, char *argv[]) {
     // scans the matrix dimensions from first line
     fscanf(file, "%d %d\n", &ROW, &COL); 
     // Now the file pointer is in the start of the "matrix"
-
     printf("i: %d, j: %d\n", ROW, COL);
     
     printf("Allocating memory for the matrix\n");
-    char **matrix = malloc(ROW * sizeof(char *)); // Allocate an array of pointers to char for the ROW
+    char **matrix = malloc(ROW * sizeof(char *));
     for (i = 0; i < ROW; i++) {
-        matrix[i] = malloc(COL * sizeof(char)); // Allocate an array of char for each row, to the size of the COL
+        matrix[i] = malloc(COL * sizeof(char));
     }
     printf("Finished allocating memory for the matrix\n");
 
@@ -137,16 +183,14 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Cell Count: %d\n", count);
-    // Now just missing reading the words at the end
 
-    char tempWord[MAX_WORD_LENGTH + 1]; // Buffer for reading each word
-    char* words[MAX_WORDS]; // Array to hold pointers to words
+    char tempWord[MAX_WORD_LENGTH + 1];
+    char* words[MAX_WORDS];
     int wordCount = 0;
     
     // now scan the words that we'll search for and put into an array
    while (fscanf(file, "%s\n", tempWord) == 1) {
         printf("Read line: %s\n", tempWord);
-        // Allocate memory for the tempWord
         words[wordCount] = malloc(strlen(tempWord)+1);
         // Copy that word into the array of words
         strcpy(words[wordCount], tempWord);
@@ -156,27 +200,33 @@ int main(int argc, char *argv[]) {
     }
     fclose(file);
 
-    // Loop through the array and print each string
     for(i = 0; i < wordCount; i++) {
         printf("%s\n", words[i]);
     }
     
+    // Create one thread for each word
+    pthread_t searchThreads[wordCount];
+    searchWordArgs argsSearch[wordCount];
 
-    // Now we're basically set to start working on finding the words
-
-    // int_t childpid;
     for (i=0; i<wordCount; i++){
-        // childpid = fork();
-        // check if it's child and run the searchword
-        searchWord(matrix, ROW, COL, words[i]);
+        argsSearch[i].matrix = matrix;
+        argsSearch[i].ROW = ROW;
+        argsSearch[i].COL = COL;
+        argsSearch[i].word = words[i];
+
+        pthread_create(&searchThreads[i], NULL, searchWord, &argsSearch[i]);
     }
     
+    // Wait for all to finish
+    for (i=0; i<wordCount; i++){
+        pthread_join(&searchThreads[i], NULL);
+    }
+
     printf("Freeing memory for the matrix\n");
     for (i = 0; i < ROW; i++) {
-        free(matrix[i]); // Free each row
+        free(matrix[i]);
     }
-    free(matrix); // free the array of pointers
-    //
+    free(matrix);
     return 1;
 }
 
