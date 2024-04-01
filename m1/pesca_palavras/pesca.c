@@ -9,14 +9,12 @@
 #define MAX_WORD_LENGTH 500
 #define DIRECTIONS 8
 
-// To have the up down right left etc. with the name
 typedef struct {
     int x;
     int y;
     char *directionName;
 } Direction;
 
-// To return the coordinates and direction name
 typedef struct {
     int wordI;
     int row;
@@ -44,6 +42,7 @@ typedef struct{
     char *directionName;
 } findInDirectionArgs;
 
+// ta y, x cpa, why
 Direction directions[] = {
     { -1,  0, "cima"},
     {  1,  0, "baixo"},
@@ -72,7 +71,6 @@ void *findInDirection(void *args){
     int lookX = currX+x;
     int lookY = currY+y;
     int wordI = 1;
-
 
     while (wordI<wordLength){
         if (lookX >= maxX || lookY >= maxY || lookX < 0 || lookY < 0){
@@ -142,11 +140,11 @@ void *searchWord(void *args){
     char *word = parsedArgs->word;
     int wordLength = strlen(word);
 
+    // The problem of creating threads here is that it could get up to 
+    // ROW * COL threads, so we would need a thread pool, or something to control how many threads
+    // We have at a time, like letting 8 threads run at a time, like batching them
     for (int i=0; i<ROW; i++){
         for (int j=0; j<COL; j++){
-            // Find the first letter of the word to start searching
-            // TODO: convert to threads too, and stop as soon as one gets
-            // the result
             if (matrix[i][j] == word[0]){
                 // printf("Starting search from [%d, %d]\n", i, j);
                 exploreDirection(matrix, ROW, COL, word, i, j, wordLength);
@@ -156,11 +154,42 @@ void *searchWord(void *args){
     printf("Finished searching for word %s\n", word);
 }
 
+
+char** readMatrixFromFile(FILE* file, int* ROW, int* COL) {
+    // Reads the matrix from teh file based on how many ROW / COL it has.
+    // It will get the ROW and COl based on regex and then read the matrix.
+    // Reading the matrix then is done by reading each character in an row col loop.
+    fscanf(file, "%d %d\n", ROW, COL); 
+    char **matrix = malloc(*ROW * sizeof(char *));
+    for (int i = 0; i < *ROW; i++) {
+        matrix[i] = malloc(*COL * sizeof(char));
+        for (int j = 0; j < *COL; j++) {
+            fscanf(file, "%c\n", &matrix[i][j]);
+        }
+    }
+    return matrix;
+}
+
+char** readWordsFromFile(FILE* file, int* wordCount) {
+    // To read the words from file we'll continue with the same file opened
+    // as the pointer to the file will be at the end of the matrix, where the words start,
+    // we'll read one word per line using the %s\n regex.
+    char tempWord[MAX_WORD_LENGTH + 1];
+    char** words = malloc(MAX_WORDS * sizeof(char*));
+    *wordCount = 0;
+    while (fscanf(file, "%s\n", tempWord) == 1 && *wordCount < MAX_WORDS) {
+        words[*wordCount] = malloc(strlen(tempWord) + 1);
+        strcpy(words[*wordCount], tempWord);
+        (*wordCount)++;
+    }
+    return words;
+}
+
+
 int main(int argc, char *argv[]) {
     FILE *file;
     char* filename;
     int ROW, COL;
-    int i, j;
 
     if (argc != 2){
         printf("Incorrect usage, missing filename argument\n");
@@ -178,62 +207,25 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("Opened the file!\n");
-
-    // scans the matrix dimensions from first line
-    fscanf(file, "%d %d\n", &ROW, &COL); 
-    // Now the file pointer is in the start of the "matrix"
-    printf("i: %d, j: %d\n", ROW, COL);
-    
-    printf("Allocating memory for the matrix\n");
-    char **matrix = malloc(ROW * sizeof(char *));
-    for (i = 0; i < ROW; i++) {
-        matrix[i] = malloc(COL * sizeof(char));
-    }
-    printf("Finished allocating memory for the matrix\n");
-
-    printf("Starting to read the matrix\n");
-    int count = 0;
-    char cell;
-    for (i=0; i<ROW; i++){
-        for (j=0; j<COL; j++){
-            fscanf(file, "%c\n", &cell);
-            // TODO: write to another file
-            // printf("%c", cell);
-            matrix[i][j] = cell;
-            count++;
-        }
-        // printf("\n");
-    }
+    printf("Opened the file\n");
+    char **matrix = readMatrixFromFile(file, &ROW, &COL);
     printf("Read the matrix\n");
 
-    // printf("Cell Count: %d\n", count);
+    int wordCount;
+    char** words = readWordsFromFile(file, &wordCount);
+    printf("Read the words\n");
 
-    char tempWord[MAX_WORD_LENGTH + 1];
-    char* words[MAX_WORDS];
-    int wordCount = 0;
-    
-    // now scan the words that we'll search for and put into an array
-   while (fscanf(file, "%s\n", tempWord) == 1) {
-        // printf("Read line: %s\n", tempWord);
-        words[wordCount] = malloc(strlen(tempWord)+1);
-        // Copy that word into the array of words
-        strcpy(words[wordCount], tempWord);
-        // Check if it was properly added to the array of words
-        // printf("Added to array: %s\n", words[wordCount]);
-        wordCount++;
-    }
     fclose(file);
 
-    for(i = 0; i < wordCount; i++) {
+    for(int i = 0; i < wordCount; i++) {
         printf("%s\n", words[i]);
     }
-    
+
     // Create one thread for each word
     pthread_t searchThreads[wordCount];
     searchWordArgs argsSearch[wordCount];
 
-    for (i=0; i<wordCount; i++){
+    for (int i=0; i<wordCount; i++){
         argsSearch[i].matrix = matrix;
         argsSearch[i].ROW = ROW;
         argsSearch[i].COL = COL;
@@ -244,19 +236,20 @@ int main(int argc, char *argv[]) {
         printf("Thread %d created\n", i);
     }
 
-    for (i = 0; i < wordCount; i++) {
+    for (int i = 0; i < wordCount; i++) {
         pthread_join(searchThreads[i], NULL);
     }
 
-    for (i = 0; i < wordCount; i++) {
+    // Free resources allocated previously
+    for (int i = 0; i < wordCount; i++) {
         free(words[i]);
     }
+    free(words);
 
-    printf("Freeing memory for the matrix\n");
-    for (i = 0; i < ROW; i++) {
+    for (int i = 0; i < ROW; i++) {
         free(matrix[i]);
     }
     free(matrix);
-    return 1;
-}
 
+    return 0;
+}
