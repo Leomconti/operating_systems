@@ -71,7 +71,7 @@ void findInDirection(findInDirectionArgs *a) {
     }
 
     // If the code reaches here, the word has been found.
-    printf("Word '%s' found at [%d,%d] heading %s.\n", a->word, a->currX, a->currY, a->directionName);
+    printf("%s - (%d,%d):%s.\n", a->word, a->currX, a->currY, a->directionName);
 
     // Record the finding for later writing to file
     if (foundWordCount < MAX_FOUND_WORDS) {
