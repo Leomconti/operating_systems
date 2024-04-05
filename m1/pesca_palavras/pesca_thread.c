@@ -23,12 +23,10 @@ typedef struct {
     char **matrix, *word, *directionName;
 } findInDirectionArgs;
 
-
 typedef struct {
     int row, col;
     char word[MAX_WORD_LENGTH], direction[MAX_WORD_LENGTH];
 } FoundWordDetail;
-
 
 // para cada direcao, temos um x e y para "caminhar" na matriz, e o nome da direcao
 typedef struct {
@@ -52,6 +50,7 @@ Direction directions[] = {
 FoundWordDetail foundWords[MAX_WORDS];
 int foundWordCount = 0;
 pthread_mutex_t mutex;
+
 
 void findInDirection(findInDirectionArgs *a) {
     // parse dos argumentos da struct
@@ -118,6 +117,7 @@ void exploreDirection(char **matrix, int ROW, int COL, char *word, int startX, i
     }
 }
 
+
 // funcao sequencial para procurar cada palavra na matriz
 void searchWord(searchWordArgs *a) {
     char **matrix = a->matrix;
@@ -133,6 +133,7 @@ void searchWord(searchWordArgs *a) {
         }
     }
 }
+
 
 // como tem um formato definido para o input, lemos o tamanho da matriz e entao ela
 char** readMatrixFromFile(FILE* file, int* ROW, int* COL) {
@@ -150,6 +151,7 @@ char** readMatrixFromFile(FILE* file, int* ROW, int* COL) {
     return matrix;
 }
 
+
 char** readWordsFromFile(FILE* file, int* wordCount) {
     // pra ler as palavras do arquivo, vamos continuar com o mesmo arquivo aberto
     // como o ponteiro do arquivo vai estar no final da matriz, onde as palavras começam,
@@ -164,6 +166,7 @@ char** readWordsFromFile(FILE* file, int* wordCount) {
     }
     return words;
 }
+
 
 char** capitalizeFoundWords(char **matrix, FoundWordDetail *foundWords, int foundWordCount) {
     // Pega a palavra, a posicao, a direcao, e vai capitaliznado ate dar o tamanho da palavra
@@ -192,6 +195,7 @@ char** capitalizeFoundWords(char **matrix, FoundWordDetail *foundWords, int foun
     }
     return matrix;
 }
+
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
