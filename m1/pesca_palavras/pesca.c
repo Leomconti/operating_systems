@@ -4,10 +4,12 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <pthread.h>
+#include <ctype.h>
 
 #define MAX_WORDS 20
 #define MAX_WORD_LENGTH 500
 #define DIRECTIONS 8
+#define MAX_FOUND_WORDS 20
 
 typedef struct {
     int x;
@@ -42,7 +44,20 @@ typedef struct{
     char *directionName;
 } findInDirectionArgs;
 
-// ta y, x cpa, why
+
+typedef struct {
+    char word[MAX_WORD_LENGTH];
+    int row;
+    int col;
+    char direction[MAX_WORD_LENGTH];
+} FoundWordDetail;
+
+FoundWordDetail foundWords[MAX_FOUND_WORDS];
+int foundWordCount = 0;
+pthread_mutex_t foundWordsMutex;
+
+// Linha / Coluna que esta sendo explorada
+// String com a direcao que esse representa, para usarmos no results 
 Direction directions[] = {
     { -1,  0, "cima"},
     {  1,  0, "baixo"},
@@ -78,16 +93,27 @@ void *findInDirection(void *args){
         }
         if (matrix[lookX][lookY] == word[wordI]) {
             wordI++;
-            lookX +=x;
-            lookY +=y;
+            lookX += x;
+            lookY += y;
         }
         else {
             return NULL;
         }
     }
 
-    if (wordI == wordLength)
-    {
+    if (wordI == wordLength) {
+        pthread_mutex_lock(&foundWordsMutex);
+
+        if (foundWordCount < MAX_FOUND_WORDS) {
+            // No capitalization, just storing the found word details.
+            strcpy(foundWords[foundWordCount].word, word);
+            foundWords[foundWordCount].row = currX;
+            foundWords[foundWordCount].col = currY;
+            strcpy(foundWords[foundWordCount].direction, directionName);
+            foundWordCount++;
+        }
+        pthread_mutex_unlock(&foundWordsMutex);
+
         foundResult *result = malloc(sizeof(foundResult));
         if (result != NULL) {
             result->row = currX;
@@ -96,8 +122,10 @@ void *findInDirection(void *args){
             return result;
         }
     }
+
     return NULL;
-} 
+}
+
 
 void *exploreDirection(char **matrix, int ROW, int COL, char *word, int startX, int startY, int wordLength) {
     pthread_t directionThreads[DIRECTIONS];
@@ -190,6 +218,8 @@ int main(int argc, char *argv[]) {
     FILE *file;
     char* filename;
     int ROW, COL;
+    pthread_mutex_init(&foundWordsMutex, NULL);
+
 
     if (argc != 2){
         printf("Incorrect usage, missing filename argument\n");
@@ -240,7 +270,31 @@ int main(int argc, char *argv[]) {
         pthread_join(searchThreads[i], NULL);
     }
 
-    // Free resources allocated previously
+    // Write the restults to a file
+    FILE *resultFile = fopen("result.txt", "w");
+    if (resultFile == NULL) {
+        perror("Failed to open result.txt for writing");
+        return 1;
+    }
+
+    // Write the modified matrix to the file
+    for (int i = 0; i < ROW; i++) {
+        for (int j = 0; j < COL; j++) {
+            fprintf(resultFile, "%c", matrix[i][j]);
+        }
+        fprintf(resultFile, "\n");
+    }
+
+    // Write the details of the found words below the matrix
+    for (int i = 0; i < foundWordCount; i++) {
+        fprintf(resultFile, "%s found at [%d, %d] heading %s.\n", 
+                foundWords[i].word, foundWords[i].row, foundWords[i].col, foundWords[i].direction);
+    }
+
+    // Close the file
+    fclose(resultFile);
+
+    // Free resources allocated previously:
     for (int i = 0; i < wordCount; i++) {
         free(words[i]);
     }
@@ -250,6 +304,6 @@ int main(int argc, char *argv[]) {
         free(matrix[i]);
     }
     free(matrix);
-
+    pthread_mutex_destroy(&foundWordsMutex);
     return 0;
 }
