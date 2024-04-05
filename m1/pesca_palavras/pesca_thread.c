@@ -51,7 +51,7 @@ Direction directions[] = {
 // para threads tb vou adicionar um mutex para garantir que nao vai ter problema de race condition
 FoundWordDetail foundWords[MAX_WORDS];
 int foundWordCount = 0;
-pthread_mutex_t foundWordsMutex;
+pthread_mutex_t mutex;
 
 void findInDirection(findInDirectionArgs *a) {
     // parse dos argumentos da struct
@@ -77,6 +77,8 @@ void findInDirection(findInDirectionArgs *a) {
         }
     }
 
+    pthread_mutex_lock(&mutex);
+
     // Se chegou aqui eh pq achou a palavra
     printf("%s - (%d,%d):%s.\n", word, currX, currY, directionName);
 
@@ -88,6 +90,7 @@ void findInDirection(findInDirectionArgs *a) {
         strncpy(foundWords[foundWordCount].direction, directionName, MAX_WORD_LENGTH);
         foundWordCount++;
     }
+    pthread_mutex_unlock(&mutex);
 }
 
 
@@ -216,6 +219,8 @@ int main(int argc, char *argv[]) {
     char **words = readWordsFromFile(file, &wordCount);
     fclose(file);
 
+    pthread_mutex_init(&mutex, NULL);
+
     pthread_t searchThreads[MAX_WORDS];
     searchWordArgs searchArgs[MAX_WORDS];
 
@@ -223,10 +228,20 @@ int main(int argc, char *argv[]) {
     int status;
 
     for (int i = 0; i < wordCount; ++i) {
-        searchWordArgs args = {.matrix = matrix, .ROW = ROW, .COL = COL, .word = words[i]};
-        searchWord(&args);
+        searchArgs[i] = (searchWordArgs){.matrix = matrix, .ROW = ROW, .COL = COL, .word = words[i]};
+        // Note: Passing &searchArgs[i] directly to ensure each thread has its own arguments
+        if (pthread_create(&searchThreads[i], NULL, (void *(*)(void *))searchWord, (void *)&searchArgs[i])) {
+            fprintf(stderr, "Error creating thread\n");
+            return 1;
+        }
     }
 
+    for (int i = 0; i < wordCount; ++i) {
+        if (pthread_join(searchThreads[i], NULL)) {
+            fprintf(stderr, "Error joining thread\n");
+            return 2;
+        }
+    }
 
     // pegar o tempo de execucao, em tempo real e de clock cpu
     endTime = clock();
@@ -250,12 +265,16 @@ int main(int argc, char *argv[]) {
             fprintf(resultFile, "\n");
         }
         for (int i = 0; i < foundWordCount; i++) {
-            fprintf(resultFile, "%s - (%d, %d):%s.\n", foundWords[i].word, foundWords[i].row, foundWords[i].col, foundWords[i].direction);
+            fprintf(resultFile, "%s - (%d, %d):%s\n", foundWords[i].word, foundWords[i].row, foundWords[i].col, foundWords[i].direction);
         }
+        fprintf(resultFile, "Real Execution Time: %ld seconds, %ld microseconds\n", seconds, micros);
+        fprintf(resultFile, "CPU Execution time: %f seconds\n", cpuTimeUsed);
         fclose(resultFile);
     } else {
         perror("Could not open result.txt for writing");
     }
+
+    pthread_mutex_destroy(&mutex);
 
     return 0;
 }

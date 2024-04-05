@@ -251,6 +251,8 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i < foundWordCount; i++) {
             fprintf(resultFile, "%s - (%d, %d):%s.\n", foundWords[i].word, foundWords[i].row, foundWords[i].col, foundWords[i].direction);
         }
+        fprintf(resultFile, "Real Execution Time: %ld seconds, %ld microseconds\n", seconds, micros);
+        fprintf(resultFile, "CPU Execution time: %f seconds\n", cpuTimeUsed);
         fclose(resultFile);
     } else {
         perror("Could not open result.txt for writing");
