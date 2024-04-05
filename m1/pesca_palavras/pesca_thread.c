@@ -11,8 +11,7 @@
 #define MAX_WORD_LENGTH 500
 #define DIRECTIONS 8
 
-// Define arguments for the functions, as they are threads, and only receive one argument
-// We'll send them in a struct
+// definir os argumentos para as funcoes, como podem ser threads, so recebem um argumento
 typedef struct {
     char **matrix;
     int ROW, COL;
@@ -31,7 +30,7 @@ typedef struct {
 } FoundWordDetail;
 
 
-// So we can have directions to search, and the name of them, to put in the result
+// para cada direcao, temos um x e y para "caminhar" na matriz, e o nome da direcao
 typedef struct {
     int x, y;
     char *directionName;
@@ -48,49 +47,59 @@ Direction directions[] = {
     {1, 1, "baixo/direita"}
 };
 
-// This is going to be used as a global variable, so we can store the found words
-// And we create the mutex so different threads can use it in sync
+// isso eh para guardar as palavras encontradas
+// para threads tb vou adicionar um mutex para garantir que nao vai ter problema de race condition
 FoundWordDetail foundWords[MAX_WORDS];
 int foundWordCount = 0;
 pthread_mutex_t foundWordsMutex;
 
 void findInDirection(findInDirectionArgs *a) {
+    // parse dos argumentos da struct
     int lookX = a->currX;
     int lookY = a->currY;
+    char **matrix = a->matrix;
+    char *word = a->word;
+    int maxX = a->maxX;
+    int maxY = a->maxY;
+    int x = a->x;
+    int y = a->y;
+    int currX = a->currX;
+    int currY = a->currY;
+    char *directionName = a->directionName;
+    int wordLength = a->wordLength;
 
-    // Check if the first character matches before proceeding.
-    if (a->matrix[lookX][lookY] != a->word[0]) return;
-
-    for (int i = 1; i < a->wordLength; ++i) {
-        lookX += a->x;
-        lookY += a->y;
-        // Check bounds and character match.
-        if (lookX < 0 || lookX >= a->maxX || lookY < 0 || lookY >= a->maxY || a->matrix[lookX][lookY] != a->word[i]) {
-            return;  // The word does not match, exit the function.
+    for (int i = 1; i < wordLength; ++i) {
+        lookX += x;
+        lookY += y;
+        // checa se a palavra nao bate com a matriz, ou se passou dos limites
+        if (lookX < 0 || lookX >= maxX || lookY < 0 || lookY >= maxY || matrix[lookX][lookY] != word[i]) {
+            return;  // sai da funcao
         }
     }
 
-    // If the code reaches here, the word has been found.
-    printf("%s - (%d,%d):%s.\n", a->word, a->currX, a->currY, a->directionName);
+    // Se chegou aqui eh pq achou a palavra
+    printf("%s - (%d,%d):%s.\n", word, currX, currY, directionName);
 
     // Record the finding for later writing to file
     if (foundWordCount < MAX_WORDS) {
-        strncpy(foundWords[foundWordCount].word, a->word, MAX_WORD_LENGTH);
-        foundWords[foundWordCount].row = a->currX;
-        foundWords[foundWordCount].col = a->currY;
-        strncpy(foundWords[foundWordCount].direction, a->directionName, MAX_WORD_LENGTH);
+        strncpy(foundWords[foundWordCount].word, word, MAX_WORD_LENGTH);
+        foundWords[foundWordCount].row = currX;
+        foundWords[foundWordCount].col = currY;
+        strncpy(foundWords[foundWordCount].direction, directionName, MAX_WORD_LENGTH);
         foundWordCount++;
     }
 }
 
 
-// Function to explore all directions from a starting point
+// comecando de um ponto encontrado, explora todas as direcoes possiveis
+// dai chama o find in direction, que pega a direcao e realmente procura as palavras la
 void exploreDirection(char **matrix, int ROW, int COL, char *word, int startX, int startY) {
     findInDirectionArgs args;
 
     for (int i = 0; i < DIRECTIONS; ++i) {
+        // Temos que criar uma struct para passar os argumentos
         args = (findInDirectionArgs){
-            .x = directions[i].x,
+            .x = directions[i].x, 
             .y = directions[i].y,
             .matrix = matrix, 
             .maxX = ROW, 
@@ -106,12 +115,12 @@ void exploreDirection(char **matrix, int ROW, int COL, char *word, int startX, i
     }
 }
 
-void searchWord(searchWordArgs *args) {
-    // parse the arguments
-    char **matrix = args->matrix;
-    int ROW = args->ROW;
-    int COL = args->COL;
-    char *word = args->word;
+// funcao sequencial para procurar cada palavra na matriz
+void searchWord(searchWordArgs *a) {
+    char **matrix = a->matrix;
+    int ROW = a->ROW;
+    int COL = a->COL;
+    char *word = a->word;
 
     for (int i = 0; i < ROW; ++i) {
         for (int j = 0; j < COL; ++j) {
@@ -122,25 +131,26 @@ void searchWord(searchWordArgs *args) {
     }
 }
 
-// Reads the character matrix from a file
+// como tem um formato definido para o input, lemos o tamanho da matriz e entao ela
 char** readMatrixFromFile(FILE* file, int* ROW, int* COL) {
     fscanf(file, "%d %d\n", ROW, COL);
-    // Allocate memory for that matrix ixj
+    // alocar memoria para a matriz ixj
     char **matrix = (char **)malloc(*ROW * sizeof(char *));
     for (int i = 0; i < *ROW; ++i) {
-        // Allocate for each row
+        // alocar memoria para cada linha da matriz
         matrix[i] = (char *)malloc(*COL * sizeof(char));
         for (int j = 0; j < *COL; ++j) {
-            // Scan character
+            // usa a regex %c\n para ler cada caractere
             fscanf(file, "%c\n", &matrix[i][j]);
         }
     }
     return matrix;
 }
+
 char** readWordsFromFile(FILE* file, int* wordCount) {
-    // To read the words from file we'll continue with the same file opened
-    // as the pointer to the file will be at the end of the matrix, where the words start,
-    // we'll read one word per line using the %s\n regex.
+    // pra ler as palavras do arquivo, vamos continuar com o mesmo arquivo aberto
+    // como o ponteiro do arquivo vai estar no final da matriz, onde as palavras começam,
+    // vamos ler uma palavra por linha usando o regex %s\n.
     char tempWord[MAX_WORD_LENGTH + 1];
     char** words = (char **)malloc(MAX_WORDS * sizeof(char*));
     *wordCount = 0;
@@ -152,15 +162,16 @@ char** readWordsFromFile(FILE* file, int* wordCount) {
     return words;
 }
 
-void capitalizeFoundWords(char **matrix, FoundWordDetail *foundWords, int foundWordCount) {
+char** capitalizeFoundWords(char **matrix, FoundWordDetail *foundWords, int foundWordCount) {
+    // Pega a palavra, a posicao, a direcao, e vai capitaliznado ate dar o tamanho da palavra
     for (int i = 0; i < foundWordCount; i++) {
         int x = foundWords[i].row;
         int y = foundWords[i].col;
         char *word = foundWords[i].word;
         
-        // Find the direction
         int dirX = 0, dirY = 0;
         for (int d = 0; d < DIRECTIONS; d++) {
+            // compara a direcao com a da struct, para achar a direcao x y para "caminhar"
             if (strcmp(directions[d].directionName, foundWords[i].direction) == 0) {
                 dirX = directions[d].x;
                 dirY = directions[d].y;
@@ -168,13 +179,15 @@ void capitalizeFoundWords(char **matrix, FoundWordDetail *foundWords, int foundW
             }
         }
 
-        // Apply the direction to capitalize letters
+        // Caminha na direcao ate dar o tamanho da palavra
         for (int j = 0; j < strlen(word); j++) {
             matrix[x][y] = toupper(matrix[x][y]);
+            // printf("Toupper %c em: (%d, %d)\n", matrix[x][y], x, y);
             x += dirX;
             y += dirY;
         }
     }
+    return matrix;
 }
 
 int main(int argc, char *argv[]) {
@@ -215,14 +228,17 @@ int main(int argc, char *argv[]) {
     }
 
 
-    // get end time from real world and cpu clock
-    gettimeofday(&end, NULL);
+    // pegar o tempo de execucao, em tempo real e de clock cpu
     endTime = clock();
+    gettimeofday(&end, NULL);
     long seconds = (end.tv_sec - start.tv_sec);
     long micros = ((seconds * 1000000) + end.tv_usec) - (start.tv_usec);
     printf("Real Execution Time: %ld seconds, %ld microseconds\n", seconds, micros);
     cpuTimeUsed = ((double) (endTime - startTime)) / CLOCKS_PER_SEC;
     printf("CPU Execution time: %f seconds\n", cpuTimeUsed);
+    
+    // atualizar a matriz que sera escrita no result, com capitalizacao das palavras encontradas
+    matrix = capitalizeFoundWords(matrix, foundWords, foundWordCount);
 
     printf("Writing found words to file\n");
     FILE *resultFile = fopen("result.txt", "w");
