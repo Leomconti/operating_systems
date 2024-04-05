@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 #define MAX_WORDS 20
 #define MAX_WORD_LENGTH 500
@@ -154,6 +155,9 @@ int main(int argc, char *argv[]) {
     }
     printf("File opened\n");
 
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+
     clock_t startTime, endTime;
     double cpuTimeUsed;
 
@@ -176,12 +180,15 @@ int main(int argc, char *argv[]) {
         searchWord(&args);
     }
 
-    // Record the end time just before cleanup starts
-    endTime = clock();
-    // Calculate the elapsed time in seconds
-    cpuTimeUsed = ((double) (endTime - startTime)) / CLOCKS_PER_SEC;
 
-    printf("Execution time: %f seconds\n", cpuTimeUsed);
+    gettimeofday(&end, NULL);
+    endTime = clock();
+
+    long seconds = (end.tv_sec - start.tv_sec);
+    long micros = ((seconds * 1000000) + end.tv_usec) - (start.tv_usec);
+    printf("Real Execution Time: %ld seconds, %ld microseconds\n", seconds, micros);
+    cpuTimeUsed = ((double) (endTime - startTime)) / CLOCKS_PER_SEC;
+    printf("CPU Execution time: %f seconds\n", cpuTimeUsed);
 
     printf("Writing found words to file\n");
     FILE *resultFile = fopen("result.txt", "w");
