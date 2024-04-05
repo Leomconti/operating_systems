@@ -10,7 +10,6 @@
 #define MAX_WORDS 20
 #define MAX_WORD_LENGTH 500
 #define DIRECTIONS 8
-#define MAX_FOUND_WORDS 20
 
 // Define arguments for the functions, as they are threads, and only receive one argument
 // We'll send them in a struct
@@ -51,7 +50,7 @@ Direction directions[] = {
 
 // This is going to be used as a global variable, so we can store the found words
 // And we create the mutex so different threads can use it in sync
-FoundWordDetail foundWords[MAX_FOUND_WORDS];
+FoundWordDetail foundWords[MAX_WORDS];
 int foundWordCount = 0;
 pthread_mutex_t foundWordsMutex;
 
@@ -75,7 +74,7 @@ void findInDirection(findInDirectionArgs *a) {
     printf("%s - (%d,%d):%s.\n", a->word, a->currX, a->currY, a->directionName);
 
     // Record the finding for later writing to file
-    if (foundWordCount < MAX_FOUND_WORDS) {
+    if (foundWordCount < MAX_WORDS) {
         strncpy(foundWords[foundWordCount].word, a->word, MAX_WORD_LENGTH);
         foundWords[foundWordCount].row = a->currX;
         foundWords[foundWordCount].col = a->currY;
