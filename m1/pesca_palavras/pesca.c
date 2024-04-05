@@ -155,14 +155,12 @@ int main(int argc, char *argv[]) {
     }
     printf("File opened\n");
 
+    // Get start time from real world and cpu clock
     struct timeval start, end;
     gettimeofday(&start, NULL);
-
     clock_t startTime, endTime;
     double cpuTimeUsed;
-
     startTime = clock();
-
 
     int ROW, COL, wordCount;
     char **matrix = readMatrixFromFile(file, &ROW, &COL);
@@ -181,9 +179,9 @@ int main(int argc, char *argv[]) {
     }
 
 
+    // get end time from real world and cpu clock
     gettimeofday(&end, NULL);
     endTime = clock();
-
     long seconds = (end.tv_sec - start.tv_sec);
     long micros = ((seconds * 1000000) + end.tv_usec) - (start.tv_usec);
     printf("Real Execution Time: %ld seconds, %ld microseconds\n", seconds, micros);
