@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <ctype.h>
 #include <time.h>
+#include <unistd.h>
 
 #define MAX_WORDS 20
 #define MAX_WORD_LENGTH 500
@@ -53,101 +54,62 @@ FoundWordDetail foundWords[MAX_FOUND_WORDS];
 int foundWordCount = 0;
 pthread_mutex_t foundWordsMutex;
 
-void *findInDirection(void *args) {
-    // Parse args
-    findInDirectionArgs *a = (findInDirectionArgs *)args;
-    
-    int maxY = a->maxY;
-    int maxX = a->maxX;
-    int x = a->x;
-    int y = a->y;
-    int wordLength = a->wordLength;
-    int currX = a->currX;
-    int currY = a->currY;
-    char *word = a->word;
-    char **matrix = a->matrix;
-    char *directionName = a->directionName;
+void findInDirection(findInDirectionArgs *a) {
+    int lookX = a->currX;
+    int lookY = a->currY;
 
-    int lookX, lookY;
+    // Check if the first character matches before proceeding.
+    if (a->matrix[lookX][lookY] != a->word[0]) return;
 
-    // Iterate over each character in the word, checking if it matches the matrix at the expected position.
-    for (int i = 1; i < wordLength; ++i) {
-        // If the current position is out of bounds or the character does not match, return NULL.
-        if (lookX < 0 || lookX >= maxX|| lookY < 0 || lookY >= maxY || matrix[lookX][lookY] != word[i]) {
-            return NULL;
+    for (int i = 1; i < a->wordLength; ++i) {
+        lookX += a->x;
+        lookY += a->y;
+        // Check bounds and character match.
+        if (lookX < 0 || lookX >= a->maxX || lookY < 0 || lookY >= a->maxY || a->matrix[lookX][lookY] != a->word[i]) {
+            return;  // The word does not match, exit the function.
         }
-
-        // Move to the next position in the specified direction for the next iteration.
-        lookX += x;
-        lookY += y;
     }
 
-    // If the loop completes, the word was found. Lock the mutex to safely update the foundWords array.
-    pthread_mutex_lock(&foundWordsMutex);
-    
-    // Check if there's space left in the foundWords array to log another found word.
+    // If the code reaches here, the word has been found.
+    printf("Word '%s' found at [%d,%d] heading %s.\n", a->word, a->currX, a->currY, a->directionName);
+
+    // Record the finding for later writing to file
     if (foundWordCount < MAX_FOUND_WORDS) {
-        // Copy the found word, its starting position, and the direction into the foundWords array.
-        strcpy(foundWords[foundWordCount].word, word);
-        foundWords[foundWordCount].row = currX;
-        foundWords[foundWordCount].col = currY;
-        strcpy(foundWords[foundWordCount].direction, directionName);
+        strncpy(foundWords[foundWordCount].word, a->word, MAX_WORD_LENGTH);
+        foundWords[foundWordCount].row = a->currX;
+        foundWords[foundWordCount].col = a->currY;
+        strncpy(foundWords[foundWordCount].direction, a->directionName, MAX_WORD_LENGTH);
         foundWordCount++;
     }
-
-    // Unlock the mutex after updating.
-    pthread_mutex_unlock(&foundWordsMutex);
-
-    // Since the function is used with pthread_create, it must return NULL.
-    return NULL;
 }
 
-// Explores all directions from a starting point to find a word
-void *exploreDirection(char **matrix, int ROW, int COL, char *word, int startX, int startY) {
-    pthread_t threads[DIRECTIONS];
-    findInDirectionArgs args[DIRECTIONS];
+
+// Function to explore all directions from a starting point
+void exploreDirection(char **matrix, int ROW, int COL, char *word, int startX, int startY) {
+    findInDirectionArgs args;
 
     for (int i = 0; i < DIRECTIONS; ++i) {
-        // Preparacao dos argumentos enviando para a struct definida para a thread
-        args[i] = (findInDirectionArgs){
-            .x = directions[i].x,
-            .y = directions[i].y,
-            .matrix = matrix,
-            .maxX = ROW, 
-            .maxY = COL, 
-            .word = word, 
-            .currX = startX,
-            .currY = startY,
-            .wordLength = strlen(word),
-            .directionName = directions[i].directionName
+        args = (findInDirectionArgs){
+            .x = directions[i].x, .y = directions[i].y,
+            .matrix = matrix, .maxX = ROW, .maxY = COL,
+            .word = word, .currX = startX, .currY = startY,
+            .wordLength = strlen(word), .directionName = directions[i].directionName
         };
-        pthread_create(&threads[i], NULL, findInDirection, &args[i]);
-    }
 
-    for (int i = 0; i < DIRECTIONS; ++i) {
-        pthread_join(threads[i], NULL);
+        findInDirection(&args);
     }
 }
 
-// Main function to search for each word in the matrix
-void *searchWord(void *args) {
-    // Parse args
-    searchWordArgs *a = (searchWordArgs *)args;
-
-    int ROW = a->ROW;
-    int COL = a->COL;
-    char **matrix = a->matrix;
-    char *word = a->word;
-
-    for (int i = 0; i < ROW; ++i) {
-        for (int j = 0; j < COL; ++j) {
-            if (matrix[i][j] == word[0]) {
-                exploreDirection(matrix, ROW, COL, word, i, j);
+// Sequential function to search for each word in the matrix
+void searchWord(searchWordArgs *a) {
+    for (int i = 0; i < a->ROW; ++i) {
+        for (int j = 0; j < a->COL; ++j) {
+            if (a->matrix[i][j] == a->word[0]) {
+                exploreDirection(a->matrix, a->ROW, a->COL, a->word, i, j);
             }
         }
     }
 }
-
 // Reads the character matrix from a file
 char** readMatrixFromFile(FILE* file, int* ROW, int* COL) {
     fscanf(file, "%d %d\n", ROW, COL);
@@ -203,17 +165,15 @@ int main(int argc, char *argv[]) {
     char **words = readWordsFromFile(file, &wordCount);
     fclose(file);
 
-    pthread_mutex_init(&foundWordsMutex, NULL);
     pthread_t searchThreads[MAX_WORDS];
     searchWordArgs searchArgs[MAX_WORDS];
 
-    for (int i = 0; i < wordCount; ++i) {
-        searchArgs[i] = (searchWordArgs){.matrix = matrix, .ROW = ROW, .COL = COL, .word = words[i]};
-        pthread_create(&searchThreads[i], NULL, searchWord, &searchArgs[i]);
-    }
+    pid_t pids[MAX_WORDS];
+    int status;
 
     for (int i = 0; i < wordCount; ++i) {
-        pthread_join(searchThreads[i], NULL);
+        searchWordArgs args = {.matrix = matrix, .ROW = ROW, .COL = COL, .word = words[i]};
+        searchWord(&args);
     }
 
     // Record the end time just before cleanup starts
@@ -223,32 +183,24 @@ int main(int argc, char *argv[]) {
 
     printf("Execution time: %f seconds\n", cpuTimeUsed);
 
-    // Write results to a file
-    printf("Writing results to file\n");
+    // At the end of main(), after searching for all words and before cleaning up
+    printf("Writing found words to file\n");
     FILE *resultFile = fopen("result.txt", "w");
-    for (int i = 0; i < ROW; ++i) {
-        for (int j = 0; j < COL; ++j) {
-            fprintf(resultFile, "%c", matrix[i][j]);
+    if (resultFile != NULL) {
+        for (int i = 0; i < ROW; i++) {
+            for (int j = 0; j < COL; j++) {
+                fprintf(resultFile, "%c", matrix[i][j]);
+            }
+            fprintf(resultFile, "\n");
         }
-        fprintf(resultFile, "\n");
+        for (int i = 0; i < foundWordCount; i++) {
+            fprintf(resultFile, "%s found at [%d, %d] heading %s.\n",
+                    foundWords[i].word, foundWords[i].row, foundWords[i].col, foundWords[i].direction);
+        }
+        fclose(resultFile);
+    } else {
+        perror("Could not open result.txt for writing");
     }
-    for (int i = 0; i < foundWordCount; ++i) {
-        fprintf(resultFile, "%s found at [%d, %d] heading %s.\n",
-                foundWords[i].word, foundWords[i].row, foundWords[i].col, foundWords[i].direction);
-    }
-    fclose(resultFile);
-    printf("Cleaning up memory\n");
-    // Clean-up
-    for (int i = 0; i < ROW; ++i) {
-        free(matrix[i]);
-    }
-    free(matrix);
-    for (int i = 0; i < wordCount; ++i) {
-        free(words[i]);
-    }
-    free(words);
-    pthread_mutex_destroy(&foundWordsMutex);
-    printf("Program finished\n");
 
     return 0;
 }
