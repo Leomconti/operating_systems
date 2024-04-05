@@ -183,7 +183,6 @@ int main(int argc, char *argv[]) {
 
     printf("Execution time: %f seconds\n", cpuTimeUsed);
 
-    // At the end of main(), after searching for all words and before cleaning up
     printf("Writing found words to file\n");
     FILE *resultFile = fopen("result.txt", "w");
     if (resultFile != NULL) {
@@ -194,8 +193,7 @@ int main(int argc, char *argv[]) {
             fprintf(resultFile, "\n");
         }
         for (int i = 0; i < foundWordCount; i++) {
-            fprintf(resultFile, "%s found at [%d, %d] heading %s.\n",
-                    foundWords[i].word, foundWords[i].row, foundWords[i].col, foundWords[i].direction);
+            fprintf(resultFile, "%s - (%d, %d):%s.\n", foundWords[i].word, foundWords[i].row, foundWords[i].col, foundWords[i].direction);
         }
         fclose(resultFile);
     } else {
