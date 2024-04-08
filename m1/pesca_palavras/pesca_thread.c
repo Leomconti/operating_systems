@@ -260,7 +260,7 @@ int main(int argc, char *argv[]) {
     matrix = capitalizeFoundWords(matrix, foundWords, foundWordCount);
 
     printf("Writing found words to file\n");
-    FILE *resultFile = fopen("result.txt", "w");
+    FILE *resultFile = fopen("result_threads.txt", "w");
     if (resultFile != NULL) {
         for (int i = 0; i < ROW; i++) {
             for (int j = 0; j < COL; j++) {

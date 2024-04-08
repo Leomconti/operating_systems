@@ -244,7 +244,7 @@ int main(int argc, char *argv[]) {
     matrix = capitalizeFoundWords(matrix, foundWords, foundWordCount);
 
     printf("Writing found words to file\n");
-    FILE *resultFile = fopen("result.txt", "w");
+    FILE *resultFile = fopen("result_seq.txt", "w");
     if (resultFile != NULL) {
         for (int i = 0; i < ROW; i++) {
             for (int j = 0; j < COL; j++) {
@@ -253,7 +253,7 @@ int main(int argc, char *argv[]) {
             fprintf(resultFile, "\n");
         }
         for (int i = 0; i < foundWordCount; i++) {
-            fprintf(resultFile, "%s - (%d, %d):%s.\n", foundWords[i].word, foundWords[i].row, foundWords[i].col, foundWords[i].direction);
+            fprintf(resultFile, "%s - (%d, %d):%s\n", foundWords[i].word, foundWords[i].row, foundWords[i].col, foundWords[i].direction);
         }
         fprintf(resultFile, "Real Execution Time: %ld seconds, %ld microseconds\n", seconds, micros);
         fprintf(resultFile, "CPU Execution time: %f seconds\n", cpuTimeUsed);
