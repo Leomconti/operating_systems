@@ -1010,5 +1010,5 @@ pronto - (225, 41):baixo
 bloqueado - (754, 12):baixo
 executando - (939, 65):baixo
 ocioso - (8, 71):baixo
-Real Execution Time: 0 seconds, 16062 microseconds
-CPU Execution time: 0.015893 seconds
+Real Execution Time: 0 seconds, 15926 microseconds
+CPU Execution time: 0.015330 seconds

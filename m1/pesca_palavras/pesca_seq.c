@@ -207,7 +207,7 @@ int main(int argc, char *argv[]) {
     }
     printf("File opened\n");
 
-    // Get start time from real world and cpu clock
+    // pega tempo real e de cpu
     struct timeval start, end;
     gettimeofday(&start, NULL);
     clock_t startTime, endTime;

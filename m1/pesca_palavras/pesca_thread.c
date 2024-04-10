@@ -211,7 +211,7 @@ int main(int argc, char *argv[]) {
     }
     printf("File opened\n");
 
-    // Get start time from real world and cpu clock
+    // Pegar tempo real e tempo de cpu
     struct timeval start, end;
     gettimeofday(&start, NULL);
     clock_t startTime, endTime;
@@ -233,7 +233,6 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < wordCount; ++i) {
         searchArgs[i] = (searchWordArgs){.matrix = matrix, .ROW = ROW, .COL = COL, .word = words[i]};
-        // Note: Passing &searchArgs[i] directly to ensure each thread has its own arguments
         if (pthread_create(&searchThreads[i], NULL, (void *(*)(void *))searchWord, (void *)&searchArgs[i])) {
             fprintf(stderr, "Error creating thread\n");
             return 1;
