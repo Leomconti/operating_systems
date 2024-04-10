@@ -1000,15 +1000,15 @@ sjkqrgqcmebtatmbncvwbojbbwnmnsewlsmctfajbewuiblwscaumgbdfrfoamlngeagdsoguisgnsck
 naurtsodmrqwkrkmsukbjduinljcwdkeecmwrlnwrqgfiuvjjdpeubuqnnkwtfomewwpbkscibopjdmw
 deadlock - (24, 61):direita
 escalonamento - (42, 1):direita
+consumidor - (334, 17):baixo
 threads - (475, 42):direita
 processo - (508, 21):direita
-consumidor - (334, 17):baixo
-produtor - (454, 57):baixo
 linux - (620, 46):direita
 ocioso - (8, 71):baixo
-pronto - (225, 41):baixo
 windows - (592, 61):esquerda
+pronto - (225, 41):baixo
+produtor - (454, 57):baixo
 bloqueado - (754, 12):baixo
 executando - (939, 65):baixo
-Real Execution Time: 0 seconds, 19177 microseconds
-CPU Execution time: 0.030899 seconds
+Real Execution Time: 0 seconds, 4809 microseconds
+CPU Execution time: 0.012408 seconds
