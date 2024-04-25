@@ -5,45 +5,56 @@
 #include <fcntl.h>
 #include <time.h>
 #include <stdio.h>
+#include <pthread.h>
 
 #define SZ 80
+#define FIFO_R "/tmp/pipew"
+#define FIFO_W "/tmp/piper"
 
 // typedef struct {
 //     char *msg;
 //     time_t timestamp;
 // } message;
 
-// I want to create a pipe, so I can run a chat between two processes
-// I will create a pipe, and then fork the process
+void *read_from_pipe(void *arg) {
+    int fd_r;
+    char out[SZ];
+
+    while (1)
+    {
+        // --- READ ---
+        fd_r = open(FIFO_R, O_RDONLY);
+
+        read(fd_r, out, SZ);
+        close(fd_r);
+
+        printf("REC: %s\n", out);
+    }
+}
+
 int main() {
-    int fd2;
-    char *fifo = "/tmp/chatpipe";
-    mkfifo(fifo, 0666);
+    int fd;
+    pthread_t thread;
+
+    mkfifo(FIFO_W, 0666);
 
     // Start writing
     // Define buffers for the Chars input / output
     char in[SZ], out[SZ];
 
+    printf("Welcome to the chat!\n");
+    // Create thread to read from pipe
+    pthread_create(&thread, NULL, read_from_pipe, NULL);
     while (1)
     {
-        // --- READ ---
-        fd2 = open(fifo, O_RDONLY);
-
-        printf("...\n");
-        read(fd2, out, SZ);
-        close(fd2);
-
-        printf("User1: %s\n", out);
-
         // --- WRITE ---
-        fd2 = open(fifo, O_WRONLY);
+        fd = open(FIFO_W, O_WRONLY);
 
-        printf("User2: ");
         fgets(in, SZ, stdin);
         printf("\n");
 
-        write(fd2, in, strlen(in)+1);
-        close(fd2);
+        write(fd, in, strlen(in) + 1);
+        close(fd);
     }
 
     return 0;
