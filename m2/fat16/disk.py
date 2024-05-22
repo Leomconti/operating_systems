@@ -1,44 +1,67 @@
 import os
+from io import BufferedRandom
+
+"""
+Blocks / Sectors should be interpreted as the same thing, different resources use different names.
+Here we call them sectors. We'll use these names interchangeably.
+http://www.maverick-os.dk/FileSystemFormats/FAT16_FileSystem.html
+https://www.tavi.co.uk/phobos/fat.html
+"""
 
 
 class FAT16Disk:
     def __init__(self, image_path):
         self.image_path = image_path
-        self.boot_sector = b''
-        self.disk = None
+        self.boot_sector = b""
+        self.disk: BufferedRandom = self.open_disk(image_path)  # we open the disk image upon class instantiation
         self.bytes_per_sector = 0
         self.sectors_per_cluster = 0
         self.sectors_per_fat = 0
         self.root_dir_start_sector = 0
         self.data_start_sector = 0
-        self.reserved_sectors = 0
+        self.reserved_sectors = 1  # Most cases it should be exactly 1, but we'll calculate it anyways later
         self.files = []
 
-    def open_disk(self):
+    @staticmethod
+    def open_disk(image_path):
+        """
+        Here we just open the disk as a byte array
+        """
         try:
-            self.disk = open(self.image_path, 'rb+')
+            return open(image_path, "rb+")
         except FileNotFoundError:
             print("File not found. Please check the path and try again.")
+            raise FileNotFoundError
         except Exception as e:
             print(f"An error occurred: {e}")
+            raise e
 
     def read_boot_sector(self):
-        if not self.disk:
-            self.open_disk()
+        """
+        Read the first 512 bytes of the disk image and store it in the boot_sector.
+        Then we call the parse_boot_sector.
+        """
         self.disk.seek(0)
         self.boot_sector = self.disk.read(512)
         self.parse_boot_sector()
 
     def parse_boot_sector(self):
-        self.bytes_per_sector = int.from_bytes(self.boot_sector[0x0b:0x0d], 'little')
-        self.sectors_per_cluster = self.boot_sector[0x0d]
-        self.sectors_per_fat = int.from_bytes(self.boot_sector[0x16:0x18], 'little')
+        """
+        Parse the boot sector and store the relevant information to the class.
+        Everything related to the boot block mapping, that is in the slides.
+        """
+        self.bytes_per_sector = int.from_bytes(self.boot_sector[0x0B:0x0D], "little")
+        self.sectors_per_cluster = self.boot_sector[0x0D]
+        self.sectors_per_fat = int.from_bytes(self.boot_sector[0x16:0x18], "little")
         num_fats = self.boot_sector[0x10]
-        num_root_dir_entries = int.from_bytes(self.boot_sector[0x11:0x13], 'little')
-        self.reserved_sectors = int.from_bytes(self.boot_sector[0x0e:0x10], 'little')
+        num_root_dir_entries = int.from_bytes(self.boot_sector[0x11:0x13], "little")
+        self.reserved_sectors = int.from_bytes(self.boot_sector[0x0E:0x10], "little")
 
-        self.root_dir_start_sector = self.reserved_sectors + (num_fats * self.sectors_per_fat)
-        root_dir_bytes = num_root_dir_entries * 32
+        self.root_dir_start_sector = self.reserved_sectors + (
+            num_fats * self.sectors_per_fat
+        )  # (size of FAT)*(nro of FATs)+FAT REGION ( reserved sectors, should be 1! ) https://arc.net/l/quote/syrfiuts
+
+        root_dir_bytes = num_root_dir_entries * 32  # 32 is the max, so we just multiply by 32
         root_dir_sectors = (root_dir_bytes + self.bytes_per_sector - 1) // self.bytes_per_sector
 
         self.data_start_sector = self.root_dir_start_sector + root_dir_sectors
@@ -47,33 +70,37 @@ class FAT16Disk:
         self.list_root_directory()
 
     def list_root_directory(self):
-        self.disk.seek(self.root_dir_start_sector * self.bytes_per_sector)
-        for i in range(32):  # Maximum number of entries in root directory
-            entry = self.disk.read(32)
-            self.parse_directory_entry(entry, i)
+        """
+        For this activity we won't go inside other directories, we'll just list the files in the root directory.
+        And read each dir it has, without "recursively" going into them.
+        """
+        self.disk.seek(self.root_dir_start_sector * self.bytes_per_sector)  # Find the root directory
+        for _ in range(32):  # Each of the entries in a directory list is 32 byte long
+            entry = self.disk.read(32)  # Then we look 32 bytes to see what they have.
+            self.parse_directory_entry(entry)
 
         # Now read the contents of the files
         self.read_files_content()
 
-    def parse_directory_entry(self, entry, index):
+    def parse_directory_entry(self, entry):
         if entry[0] == 0x00:
             return  # No more entries
         if entry[0] == 0xE5:
             return  # Entry is deleted
-
         attrs = entry[11]
         if attrs & 0x08:  # Volume label, skip it
             return
 
         try:
-            filename = entry[:8].decode('latin1').strip() + '.' + entry[8:11].decode('latin1').strip()
-            filename = filename.strip('.').lower()
+            filename = entry[:8].decode("latin1").strip() + "." + entry[8:11].decode("latin1").strip()
+            filename = filename.strip(".").lower()
         except UnicodeDecodeError:
-            filename = 'invalid_filename'
+            filename = "invalid_filename"  # just so we don't break the program for some ascii / latin issue
 
-        first_cluster = int.from_bytes(entry[26:28], 'little')
-        filesize = int.from_bytes(entry[28:32], 'little')
+        first_cluster = int.from_bytes(entry[26:28], "little")
+        filesize = int.from_bytes(entry[28:32], "little")
 
+        # If the attribute is 0x10, it means it's a sub dir. https://arc.net/l/quote/orrpinhh
         if attrs & 0x10:
             print(f"Directory: {filename}")
         else:
@@ -86,6 +113,9 @@ class FAT16Disk:
             self.read_file_content(first_cluster, filesize)
 
     def read_file_content(self, cluster, size):
+        """
+        Read the content of a file and print it to the terminal.
+        """
         cluster_offset = ((cluster - 2) * self.sectors_per_cluster) + self.data_start_sector
         self.disk.seek(cluster_offset * self.bytes_per_sector)
         content = self.disk.read(size)
@@ -102,15 +132,17 @@ class FAT16Disk:
 
     def find_free_clusters(self, size):
         """Find enough free clusters to store the file of a given size."""
-        clusters_needed = (size + (self.bytes_per_sector * self.sectors_per_cluster) - 1) // (self.bytes_per_sector * self.sectors_per_cluster)
+        clusters_needed = (size + (self.bytes_per_sector * self.sectors_per_cluster) - 1) // (
+            self.bytes_per_sector * self.sectors_per_cluster
+        )
         free_clusters = []
         # FAT starts immediately after reserved sectors
-        self.disk.seek(self.bytes_per_sector * (self.reserved_sectors))
+        self.disk.seek(self.bytes_per_sector)
 
         # Read entire FAT into memory for simplicity, assuming enough memory
         fat = self.disk.read(self.sectors_per_fat * self.bytes_per_sector)
         for cluster_number in range(2, len(fat) // 2):  # Cluster numbers start at 2
-            entry = int.from_bytes(fat[2 * cluster_number:2 * cluster_number + 2], 'little')
+            entry = int.from_bytes(fat[2 * cluster_number : 2 * cluster_number + 2], "little")
             if entry == 0:  # Free cluster
                 free_clusters.append(cluster_number)
                 if len(free_clusters) == clusters_needed:
@@ -119,9 +151,9 @@ class FAT16Disk:
         raise Exception("Not enough free clusters.")
 
     def insert_file(self, file_path):
-        """Insert a file into the FAT16 disk image."""
+        """Insert a file into our disk"""
         print("Inside Insert file")
-        with open(file_path, 'rb') as file:
+        with open(file_path, "rb") as file:
             file_data = file.read()
 
         free_entry_index = self.find_free_directory_entry()
@@ -133,7 +165,13 @@ class FAT16Disk:
         for i, cluster in enumerate(free_clusters):
             cluster_offset = ((cluster - 2) * self.sectors_per_cluster + self.data_start_sector) * self.bytes_per_sector
             self.disk.seek(cluster_offset)
-            self.disk.write(file_data[i * self.bytes_per_sector * self.sectors_per_cluster:(i + 1) * self.bytes_per_sector * self.sectors_per_cluster])
+            self.disk.write(
+                file_data[
+                    i * self.bytes_per_sector * self.sectors_per_cluster : (i + 1)
+                    * self.bytes_per_sector
+                    * self.sectors_per_cluster
+                ]
+            )
 
         # Update FAT entries to chain clusters
         for i in range(len(free_clusters) - 1):
@@ -148,7 +186,7 @@ class FAT16Disk:
         print("Updating fat entry")
         fat_offset = self.reserved_sectors * self.bytes_per_sector + cluster * 2
         self.disk.seek(fat_offset)
-        self.disk.write(value.to_bytes(2, 'little'))
+        self.disk.write(value.to_bytes(2, "little"))
 
     def update_directory_entry(self, index, file_path, start_cluster, size):
         """Update a directory entry with a new file."""
@@ -157,15 +195,20 @@ class FAT16Disk:
         self.disk.seek(directory_offset)
         filename, ext = os.path.splitext(os.path.basename(file_path))
         filename = filename.upper()[:8].ljust(8)
-        ext = ext.replace('.', '').upper()[:3].ljust(3)
-        entry = bytearray(filename.encode('latin1') + ext.encode('latin1') + b'\x20' + b'\x00' * 14 + start_cluster.to_bytes(2, 'little') + size.to_bytes(4, 'little') + b'\x00' * 6)
+        ext = ext.replace(".", "").upper()[:3].ljust(3)
+        entry = bytearray(
+            filename.encode("latin1")
+            + ext.encode("latin1")
+            + b"\x20"
+            + b"\x00" * 14
+            + start_cluster.to_bytes(2, "little")
+            + size.to_bytes(4, "little")
+            + b"\x00" * 6
+        )
         self.disk.write(entry)
 
     def rename_file(self, old_name, new_name):
         """Rename a file in the FAT16 disk image."""
-        if not self.disk:
-            self.open_disk()
-
         # Normalize file names to lower case
         old_name = old_name.lower()
         new_name = new_name.lower()
@@ -184,8 +227,8 @@ class FAT16Disk:
                 continue  # Skip volume label
 
             try:
-                filename = entry[:8].decode('latin1').strip() + '.' + entry[8:11].decode('latin1').strip()
-                filename = filename.strip('.').lower()
+                filename = entry[:8].decode("latin1").strip() + "." + entry[8:11].decode("latin1").strip()
+                filename = filename.strip(".").lower()
             except UnicodeDecodeError:
                 continue
 
@@ -202,14 +245,14 @@ class FAT16Disk:
 
         filename, ext = os.path.splitext(new_name)
         filename = filename.upper()[:8].ljust(8)
-        ext = ext.replace('.', '').upper()[:3].ljust(3)
+        ext = ext.replace(".", "").upper()[:3].ljust(3)
 
         # Read the current entry
         entry = bytearray(self.disk.read(32))
 
         # Update the name and extension
-        entry[:8] = filename.encode('latin1')
-        entry[8:11] = ext.encode('latin1')
+        entry[:8] = filename.encode("latin1")
+        entry[8:11] = ext.encode("latin1")
 
         # Write the updated entry back to the directory
         self.disk.seek(directory_offset)
@@ -219,9 +262,9 @@ class FAT16Disk:
 if __name__ == "__main__":
     disk_image_path = "disco1.img"
     fat16_disk = FAT16Disk(disk_image_path)
-
-    fat16_disk.open_disk()
     fat16_disk.read_boot_sector()
     # fat16_disk.insert_file("leo.txt")
+    # fat16_disk.insert_file("banana.txt")
     # print("Renaming file")
     # fat16_disk.rename_file("leo.txt", "leo1.txt")
+    # fat16_disk.rename_file("banana.txt", "leo.txt")
