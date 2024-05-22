@@ -1,3 +1,4 @@
+import datetime
 import os
 from io import BufferedRandom
 
@@ -235,8 +236,26 @@ class FAT16Disk:
             free_clusters[-1], 0xFFFF
         )  # Mark the last one as the eof https://arc.net/l/quote/xnbyctou
 
-        # update the directory entry
-        self.update_directory_entry(free_entry_index, file_path, free_clusters[0], len(file_data))
+        # Set file attributes
+        file_attributes = 0x20  # https://arc.net/l/quote/nxnxhquf
+
+        # Set creation and access dates/times to right now, for simplicity
+        now = datetime.datetime.now()
+        creation_time = self.create_time(now.hour, now.minute, now.second)
+        creation_date = self.create_date(now.year, now.month, now.day)
+        access_date = creation_date
+
+        # update the directory entry, with metadata etc
+        self.update_directory_entry(
+            free_entry_index,
+            file_path,
+            free_clusters[0],
+            len(file_data),
+            file_attributes,
+            creation_time,
+            creation_date,
+            access_date,
+        )
 
     def update_fat_entry(self, cluster, value):
         """Update a FAT entry."""
@@ -245,7 +264,9 @@ class FAT16Disk:
         self.disk.seek(fat_offset)
         self.disk.write(value.to_bytes(2, "little"))
 
-    def update_directory_entry(self, index, file_path, start_cluster, size):
+    def update_directory_entry(
+        self, index, file_path, start_cluster, size, attrs, creation_time, creation_date, access_date
+    ):
         """Update a directory entry with a new file."""
         print("Updating directory entry")
         directory_offset = self.root_dir_start_sector * self.bytes_per_sector + index * 32
@@ -256,8 +277,11 @@ class FAT16Disk:
         entry = bytearray(
             filename.encode("latin1")
             + ext.encode("latin1")
-            + b"\x20"
+            + attrs.to_bytes(1, "little")  # write the file attributes
             + b"\x00" * 14
+            + creation_time
+            + creation_date
+            + access_date
             + start_cluster.to_bytes(2, "little")
             + size.to_bytes(4, "little")
             + b"\x00" * 6
@@ -356,15 +380,23 @@ class FAT16Disk:
             self.disk.write(b"\x00\x00")  # Mark the cluster as free
             cluster = next_cluster
 
+    # Parse time https://arc.net/l/quote/nsdntmmi
+    def create_time(self, hour, minute, second):
+        """We follow the offsets to get hh:mm:ss"""
+        return ((hour << 11) | (minute << 5) | (second // 2)).to_bytes(2, "little")
+
+    def create_date(self, year, month, day):
+        """from 1980 to 2099,so 0-119, that's why we remove 1980 from the current year"""
+        year = year - 1980
+        return ((year << 9) | (month << 5) | day).to_bytes(2, "little")
+
 
 if __name__ == "__main__":
     disk_image_path = "disco1.img"
     fat16_disk = FAT16Disk(disk_image_path)
-    # fat16_disk.delete_file("nao_leo.txt")
     fat16_disk.read_boot_sector()
+    # fat16_disk.delete_file("nao_leo.txt")
     # fat16_disk.insert_file("nao_leo.txt")
-
-    # fat16_disk.delete_file("profile.jpeg")
     # fat16_disk.insert_file("profile.jpeg")
     # fat16_disk.insert_file("banana.txt")
     # print("Renaming file")
