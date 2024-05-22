@@ -77,7 +77,7 @@ class FAT16Disk:
         self.disk.seek(self.root_dir_start_sector * self.bytes_per_sector)  # Find the root directory
         for _ in range(32):  # Each of the entries in a directory list is 32 byte long
             entry = self.disk.read(32)  # Then we look 32 bytes to see what they have.
-            self.parse_directory_entry(entry)
+            self.parse_directory_entry(entry)  # entry is a file basically, or subdir, whatever
 
         # Now read the contents of the files
         self.read_files_content()
@@ -100,6 +100,8 @@ class FAT16Disk:
         first_cluster = int.from_bytes(entry[26:28], "little")
         filesize = int.from_bytes(entry[28:32], "little")
 
+        self.print_file_metadata(entry, filename)
+
         # If the attribute is 0x10, it means it's a sub dir. https://arc.net/l/quote/orrpinhh
         if attrs & 0x10:
             print(f"Directory: {filename}")
@@ -107,12 +109,65 @@ class FAT16Disk:
             print(f"File: {filename}, Size: {filesize}, First Cluster: {first_cluster}")
             self.files.append((filename, first_cluster, filesize))
 
-    def read_files_content(self):
+    def get_attributes_string(self, attrs):
+        """Return a string describing the file attributes."""
+        attributes = []
+        if attrs & 0x01:
+            attributes.append("Read-Only")
+        if attrs & 0x02:
+            attributes.append("Hidden")
+        if attrs & 0x04:
+            attributes.append("System")
+        if attrs & 0x08:
+            attributes.append("Volume Label")
+        if attrs & 0x10:
+            attributes.append("Directory")
+        if attrs & 0x20:
+            attributes.append("Archive")
+        return ", ".join(attributes) if attributes else "None"
+
+    def parse_date(self, date_bytes):
+        """Parse a date from FAT16 format."""
+        if len(date_bytes) < 2:
+            return "Unknown"
+        date_value = int.from_bytes(date_bytes, "little")
+        year = ((date_value >> 9) & 0x7F) + 1980
+        month = (date_value >> 5) & 0x0F
+        day = date_value & 0x1F
+        return f"{year:04}-{month:02}-{day:02}"
+
+    def parse_time(self, time_bytes):
+        """Parse a time from FAT16 format."""
+        if len(time_bytes) < 2:
+            return "Unknown"
+        time_value = int.from_bytes(time_bytes, "little")
+        hour = (time_value >> 11) & 0x1F
+        minute = (time_value >> 5) & 0x3F
+        second = (time_value & 0x1F) * 2
+        return f"{hour:02}:{minute:02}:{second:02}"
+
+    def print_file_metadata(self, entry, filename):
+        """Print metadata for a given file entry."""
+        attrs = entry[11]
+        created_date = self.parse_date(entry[16:18])
+        created_time = self.parse_time(entry[14:16])
+        last_access_date = self.parse_date(entry[18:20])
+
+        print(f"Metadata for file: {filename}")
+        print(f"  Attributes: {self.get_attributes_string(attrs)}")
+        print(f"  Created: {created_date} {created_time}")
+        print(f"  Last Accessed: {last_access_date}")
+
+    def read_files_content(self) -> None:
+        """
+        Passes through all files and calls the read_file_content method for each file.
+        This is just a print method
+        """
         for filename, first_cluster, filesize in self.files:
             print(f"Reading content of file: {filename}")
             self.read_file_content(first_cluster, filesize)
 
-    def read_file_content(self, cluster, size):
+    def read_file_content(self, cluster, size) -> None:
         """
         Read the content of a file and print it to the terminal.
         """
@@ -120,9 +175,9 @@ class FAT16Disk:
         self.disk.seek(cluster_offset * self.bytes_per_sector)
         content = self.disk.read(size)
         # Currently this decodes text, if we want based on the image extension we can do so
-        print(
-            f"Content of file:\n{content.decode('latin1', errors='replace')}"
-        )  # errors replace just in case it gets bugged by encoding / decoding
+        # print(
+        #     f"Content of file:\n{content.decode('latin1', errors='replace')}"
+        # )  # errors replace just in case it gets bugged by encoding / decoding
 
     def find_free_directory_entry(self):
         """Find a free directory entry in the root directory."""
@@ -168,20 +223,19 @@ class FAT16Disk:
         for i, cluster in enumerate(free_clusters):
             cluster_offset = ((cluster - 2) * self.sectors_per_cluster + self.data_start_sector) * self.bytes_per_sector
             self.disk.seek(cluster_offset)
-            self.disk.write(
-                file_data[
-                    i * self.bytes_per_sector * self.sectors_per_cluster : (i + 1)
-                    * self.bytes_per_sector
-                    * self.sectors_per_cluster
-                ]
-            )
+            # Basically, we split the file data into chunks of the size of a cluster
+            start = i * self.bytes_per_sector * self.sectors_per_cluster
+            end = (i + 1) * self.bytes_per_sector * self.sectors_per_cluster
+            self.disk.write(file_data[start:end])  # write the chunk
 
-        # Update FAT entries to chain clusters
+        # Update entries to chain clusters
         for i in range(len(free_clusters) - 1):
             self.update_fat_entry(free_clusters[i], free_clusters[i + 1])
-        self.update_fat_entry(free_clusters[-1], 0xFFFF)  # Mark the last cluster in the chain
+        self.update_fat_entry(
+            free_clusters[-1], 0xFFFF
+        )  # Mark the last one as the eof https://arc.net/l/quote/xnbyctou
 
-        # Update the directory entry
+        # update the directory entry
         self.update_directory_entry(free_entry_index, file_path, free_clusters[0], len(file_data))
 
     def update_fat_entry(self, cluster, value):
@@ -210,15 +264,12 @@ class FAT16Disk:
         )
         self.disk.write(entry)
 
-    def rename_file(self, old_name, new_name):
-        """Rename a file in the FAT16 disk image."""
-        # Normalize file names to lower case
-        old_name = old_name.lower()
-        new_name = new_name.lower()
+    def find_file(self, file_name):
+        """Find a file in the FAT16 disk image and return its directory entry index, first cluster, and size."""
+        file_name = file_name.lower()
 
-        # Search for the file in the root directory
         self.disk.seek(self.root_dir_start_sector * self.bytes_per_sector)
-        for i in range(512):  # Assumes a maximum of 512 entries in the root directory
+        for i in range(512):
             entry = self.disk.read(32)
             if entry[0] == 0x00:
                 break  # No more entries
@@ -235,40 +286,85 @@ class FAT16Disk:
             except UnicodeDecodeError:
                 continue
 
-            if filename == old_name:
-                self.update_directory_entry_name(i, new_name)
-                return
+            if filename == file_name:
+                first_cluster = int.from_bytes(entry[26:28], "little")
+                filesize = int.from_bytes(entry[28:32], "little")
+                return i, first_cluster, filesize
 
-        print(f"File {old_name} not found in the root directory.")
+        raise FileNotFoundError(f"File {file_name} not found in the root directory.")
 
-    def update_directory_entry_name(self, index, new_name):
-        """Update a directory entry with a new file name."""
+    def rename_file(self, old_name, new_name):
+        """
+        Update a directory entry with a new file name.
+        In other words, rename file from a directory
+        """
+        try:
+            index, _, _ = self.find_file(old_name)
+        except FileNotFoundError:
+            print(f"File {old_name} not found in the root directory. Ending rename operation...")
+            return
+
         directory_offset = self.root_dir_start_sector * self.bytes_per_sector + index * 32
         self.disk.seek(directory_offset)
 
         filename, ext = os.path.splitext(new_name)
-        filename = filename.upper()[:8].ljust(8)
-        ext = ext.replace(".", "").upper()[:3].ljust(3)
+        filename = filename.upper()[:8].ljust(8)  # make exactly 8 characters
+        ext = (
+            ext.replace(".", "").upper()[:3].ljust(3)  # Max 3 chars
+        )  # this is just to make sure extension also is updated in case the user renames with a different extension. We copy the one from the filename, and standardize it.
 
-        # Read the current entry
-        entry = bytearray(self.disk.read(32))
+        # read the current entry
+        entry = bytearray(
+            self.disk.read(32)
+        )  # this is so we can mutate the array and therefore update the filename and ext
 
-        # Update the name and extension
+        # Update the name and extension in the entry
         entry[:8] = filename.encode("latin1")
         entry[8:11] = ext.encode("latin1")
 
-        # Write the updated entry back to the directory
-        self.disk.seek(directory_offset)
-        self.disk.write(entry)
+        self.disk.seek(directory_offset)  # go to the offset we started
+        self.disk.write(entry)  # this basically overwrites the old entry with the new one, updated
 
     def delete_file(self, file_name):
-        """Delete a file from the FAT16 disk image, by name"""
+        """
+        Delete a file from the disk image, by filename.
+        We just need to remove the reference from the table and mark its clusters as free.
+        """
+        print("Deleting file...")
+        try:
+            index, first_cluster, _ = self.find_file(file_name)
+            # mark the directory entry as deleted
+            self.mark_directory_entry_deleted(index)
+            # free the clusters used by the file
+            self.free_clusters(first_cluster)
+        except FileNotFoundError as e:
+            print(e)
+
+    def mark_directory_entry_deleted(self, index):
+        """Mark a directory entry as deleted."""
+        directory_offset = self.root_dir_start_sector * self.bytes_per_sector + index * 32
+        self.disk.seek(directory_offset)
+        self.disk.write(b"\xe5")  # Mark the first byte of the entry as 0xE5 (deleted)
+
+    def free_clusters(self, cluster):
+        """Free the clusters used by a file in the FAT."""
+        while cluster < 0xFFF8:  # While the cluster is not the end-of-file marker
+            fat_offset = self.reserved_sectors * self.bytes_per_sector + cluster * 2
+            self.disk.seek(fat_offset)
+            next_cluster = int.from_bytes(self.disk.read(2), "little")
+            self.disk.seek(fat_offset)
+            self.disk.write(b"\x00\x00")  # Mark the cluster as free
+            cluster = next_cluster
 
 
 if __name__ == "__main__":
     disk_image_path = "disco1.img"
     fat16_disk = FAT16Disk(disk_image_path)
+    # fat16_disk.delete_file("nao_leo.txt")
     fat16_disk.read_boot_sector()
+    # fat16_disk.insert_file("nao_leo.txt")
+
+    # fat16_disk.delete_file("profile.jpeg")
     # fat16_disk.insert_file("profile.jpeg")
     # fat16_disk.insert_file("banana.txt")
     # print("Renaming file")
