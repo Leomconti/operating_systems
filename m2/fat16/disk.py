@@ -138,7 +138,7 @@ class FAT16Disk:
         return f"{year:04}-{month:02}-{day:02}"
 
     def parse_time(self, time_bytes):
-        """Parse a time from FAT16 format."""
+        """Parse a time from FAT16 format. Check definition here: https://arc.net/l/quote/fxbzjiyg"""
         if len(time_bytes) < 2:
             return "Unknown"
         time_value = int.from_bytes(time_bytes, "little")
@@ -155,9 +155,9 @@ class FAT16Disk:
         last_access_date = self.parse_date(entry[18:20])
 
         print(f"Metadata for file: {filename}")
-        print(f"  Attributes: {self.get_attributes_string(attrs)}")
-        print(f"  Created: {created_date} {created_time}")
-        print(f"  Last Accessed: {last_access_date}")
+        print(f"-Attributes: {self.get_attributes_string(attrs)}")
+        print(f"-Created: {created_date} {created_time}")
+        print(f"-Last Accessed: {last_access_date}")
 
     def read_files_content(self) -> None:
         """
@@ -165,7 +165,7 @@ class FAT16Disk:
         This is just a print method
         """
         for filename, first_cluster, filesize in self.files:
-            print(f"Reading content of file: {filename}")
+            print(f"Reading content of file: {filename}...")
             self.read_file_content(first_cluster, filesize)
 
     def read_file_content(self, cluster, size) -> None:
@@ -177,7 +177,7 @@ class FAT16Disk:
         content = self.disk.read(size)
         # Currently this decodes text, if we want based on the image extension we can do so
         print(
-            f"Content of file:\n{content.decode('latin1', errors='replace')}"
+            f"Content of file:\n---\n{content.decode('latin1', errors='replace')}\n---"
         )  # errors replace just in case it gets bugged by encoding / decoding
 
     def find_free_directory_entry(self):
@@ -396,7 +396,7 @@ if __name__ == "__main__":
     fat16_disk.read_boot_sector()  # Needs to come here before inserting a file
     # fat16_disk.insert_file("abacata.txt")
     # fat16_disk.read_boot_sector()  # Needs to come here before inserting a file
-    # fat16_disk.rename_file("abacata.txt", "abacaxxx.txt")
+    fat16_disk.rename_file("banana.txt", "alsdkjsafl.txt")
     # fat16_disk.delete_file("abacaxxx.txt")
     # fat16_disk.delete_file("texto.txt")
     # fat16_disk.insert_file("nao_leo.txt")
