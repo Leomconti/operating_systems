@@ -150,8 +150,8 @@ class FAT16Disk:
     def print_file_metadata(self, entry, filename):
         """Print metadata for a given file entry."""
         attrs = entry[11]
-        created_date = self.parse_date(entry[16:18])
         created_time = self.parse_time(entry[14:16])
+        created_date = self.parse_date(entry[16:18])
         last_access_date = self.parse_date(entry[18:20])
 
         print(f"Metadata for file: {filename}")
@@ -176,9 +176,9 @@ class FAT16Disk:
         self.disk.seek(cluster_offset * self.bytes_per_sector)
         content = self.disk.read(size)
         # Currently this decodes text, if we want based on the image extension we can do so
-        # print(
-        #     f"Content of file:\n{content.decode('latin1', errors='replace')}"
-        # )  # errors replace just in case it gets bugged by encoding / decoding
+        print(
+            f"Content of file:\n{content.decode('latin1', errors='replace')}"
+        )  # errors replace just in case it gets bugged by encoding / decoding
 
     def find_free_directory_entry(self):
         """Find a free directory entry in the root directory."""
@@ -237,9 +237,9 @@ class FAT16Disk:
         )  # Mark the last one as the eof https://arc.net/l/quote/xnbyctou
 
         # Set file attributes
-        file_attributes = 0x20  # https://arc.net/l/quote/nxnxhquf
+        file_attributes = 0x20  # Archive attribute
 
-        # Set creation and access dates/times to right now, for simplicity
+        # Set creation and access dates/times to now
         now = datetime.datetime.now()
         creation_time = self.create_time(now.hour, now.minute, now.second)
         creation_date = self.create_date(now.year, now.month, now.day)
@@ -278,13 +278,13 @@ class FAT16Disk:
             filename.encode("latin1")
             + ext.encode("latin1")
             + attrs.to_bytes(1, "little")  # write the file attributes
-            + b"\x00" * 14
+            + b"\x00" * 8  # Reserved/Unused space
             + creation_time
             + creation_date
             + access_date
             + start_cluster.to_bytes(2, "little")
             + size.to_bytes(4, "little")
-            + b"\x00" * 6
+            + b"\x00" * 2  # Reserved/Unused space
         )
         self.disk.write(entry)
 
@@ -380,25 +380,27 @@ class FAT16Disk:
             self.disk.write(b"\x00\x00")  # Mark the cluster as free
             cluster = next_cluster
 
-    # Parse time https://arc.net/l/quote/nsdntmmi
     def create_time(self, hour, minute, second):
-        """We follow the offsets to get hh:mm:ss"""
+        """Create a FAT16 time value."""
         return ((hour << 11) | (minute << 5) | (second // 2)).to_bytes(2, "little")
 
     def create_date(self, year, month, day):
-        """from 1980 to 2099,so 0-119, that's why we remove 1980 from the current year"""
+        """Create a FAT16 date value."""
         year = year - 1980
         return ((year << 9) | (month << 5) | day).to_bytes(2, "little")
 
 
 if __name__ == "__main__":
-    disk_image_path = "disco1.img"
-    fat16_disk = FAT16Disk(disk_image_path)
-    fat16_disk.read_boot_sector()
-    # fat16_disk.delete_file("nao_leo.txt")
+    disk_image_path = "disk_new_new.img"
+    fat16_disk = FAT16Disk(disk_image_path)  # first one always
+    fat16_disk.read_boot_sector()  # Needs to come here before inserting a file
+    # fat16_disk.insert_file("abacata.txt")
+    # fat16_disk.read_boot_sector()  # Needs to come here before inserting a file
+    # fat16_disk.rename_file("abacata.txt", "abacaxxx.txt")
+    # fat16_disk.delete_file("abacaxxx.txt")
+    # fat16_disk.delete_file("texto.txt")
     # fat16_disk.insert_file("nao_leo.txt")
     # fat16_disk.insert_file("profile.jpeg")
     # fat16_disk.insert_file("banana.txt")
     # print("Renaming file")
-    # fat16_disk.rename_file("leo.txt", "leo1.txt")
-    # fat16_disk.rename_file("banana.txt", "leo.txt")
+    # fat16_disk.rename_file
