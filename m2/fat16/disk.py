@@ -12,6 +12,7 @@ class FAT16Disk:
         self.root_dir_start_sector = 0
         self.data_start_sector = 0
         self.reserved_sectors = 0
+        self.files = []
 
     def open_disk(self):
         try:
@@ -51,6 +52,9 @@ class FAT16Disk:
             entry = self.disk.read(32)
             self.parse_directory_entry(entry, i)
 
+        # Now read the contents of the files
+        self.read_files_content()
+
     def parse_directory_entry(self, entry, index):
         if entry[0] == 0x00:
             return  # No more entries
@@ -74,13 +78,19 @@ class FAT16Disk:
             print(f"Directory: {filename}")
         else:
             print(f"File: {filename}, Size: {filesize}, First Cluster: {first_cluster}")
+            self.files.append((filename, first_cluster, filesize))
+
+    def read_files_content(self):
+        for filename, first_cluster, filesize in self.files:
+            print(f"Reading content of file: {filename}")
+            self.read_file_content(first_cluster, filesize)
 
     def read_file_content(self, cluster, size):
         cluster_offset = ((cluster - 2) * self.sectors_per_cluster) + self.data_start_sector
         self.disk.seek(cluster_offset * self.bytes_per_sector)
         content = self.disk.read(size)
         print(f"Content of file:\n{content.decode('latin1', errors='replace')}")
-    
+
     def find_free_directory_entry(self):
         """Find a free directory entry in the root directory."""
         self.disk.seek(self.root_dir_start_sector * self.bytes_per_sector)
@@ -212,7 +222,6 @@ if __name__ == "__main__":
 
     fat16_disk.open_disk()
     fat16_disk.read_boot_sector()
-    fat16_disk.read_file_content(23, 20)
     # fat16_disk.insert_file("leo.txt")
     # print("Renaming file")
     # fat16_disk.rename_file("leo.txt", "leo1.txt")
