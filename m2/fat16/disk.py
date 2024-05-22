@@ -47,11 +47,11 @@ class FAT16Disk:
 
     def list_root_directory(self):
         self.disk.seek(self.root_dir_start_sector * self.bytes_per_sector)
-        for _ in range(32):  # Maximum number of entries in root directory
+        for i in range(32):  # Maximum number of entries in root directory
             entry = self.disk.read(32)
-            self.parse_directory_entry(entry)
+            self.parse_directory_entry(entry, i)
 
-    def parse_directory_entry(self, entry):
+    def parse_directory_entry(self, entry, index):
         if entry[0] == 0x00:
             return  # No more entries
         if entry[0] == 0xE5:
@@ -61,7 +61,12 @@ class FAT16Disk:
         if attrs & 0x08:  # Volume label, skip it
             return
 
-        filename = entry[:8].decode('ascii').strip() + '.' + entry[8:11].decode('ascii').strip()
+        try:
+            filename = entry[:8].decode('latin1').strip() + '.' + entry[8:11].decode('latin1').strip()
+            filename = filename.strip('.').lower()
+        except UnicodeDecodeError:
+            filename = 'invalid_filename'
+
         first_cluster = int.from_bytes(entry[26:28], 'little')
         filesize = int.from_bytes(entry[28:32], 'little')
 
@@ -69,13 +74,12 @@ class FAT16Disk:
             print(f"Directory: {filename}")
         else:
             print(f"File: {filename}, Size: {filesize}, First Cluster: {first_cluster}")
-            self.read_file_content(first_cluster, filesize)
 
     def read_file_content(self, cluster, size):
         cluster_offset = ((cluster - 2) * self.sectors_per_cluster) + self.data_start_sector
         self.disk.seek(cluster_offset * self.bytes_per_sector)
         content = self.disk.read(size)
-        print(f"Content of file:\n{content.decode('ascii', errors='replace')}")
+        print(f"Content of file:\n{content.decode('latin1', errors='replace')}")
     
     def find_free_directory_entry(self):
         """Find a free directory entry in the root directory."""
@@ -142,14 +146,73 @@ class FAT16Disk:
         directory_offset = self.root_dir_start_sector * self.bytes_per_sector + index * 32
         self.disk.seek(directory_offset)
         filename, ext = os.path.splitext(os.path.basename(file_path))
-        filename:str = filename.upper()[:8].ljust(8)
+        filename = filename.upper()[:8].ljust(8)
         ext = ext.replace('.', '').upper()[:3].ljust(3)
-        entry = bytearray(filename.encode('ascii') + ext.encode('ascii') + b'\x20' + b'\x00' * 14 + start_cluster.to_bytes(2, 'little') + size.to_bytes(4, 'little') + b'\x00' * 6)
+        entry = bytearray(filename.encode('latin1') + ext.encode('latin1') + b'\x20' + b'\x00' * 14 + start_cluster.to_bytes(2, 'little') + size.to_bytes(4, 'little') + b'\x00' * 6)
         self.disk.write(entry)
+
+    def rename_file(self, old_name, new_name):
+        """Rename a file in the FAT16 disk image."""
+        if not self.disk:
+            self.open_disk()
+
+        # Normalize file names to lower case
+        old_name = old_name.lower()
+        new_name = new_name.lower()
+
+        # Search for the file in the root directory
+        self.disk.seek(self.root_dir_start_sector * self.bytes_per_sector)
+        for i in range(512):  # Assumes a maximum of 512 entries in the root directory
+            entry = self.disk.read(32)
+            if entry[0] == 0x00:
+                break  # No more entries
+            if entry[0] == 0xE5:
+                continue  # Entry is deleted
+
+            attrs = entry[11]
+            if attrs & 0x08:
+                continue  # Skip volume label
+
+            try:
+                filename = entry[:8].decode('latin1').strip() + '.' + entry[8:11].decode('latin1').strip()
+                filename = filename.strip('.').lower()
+            except UnicodeDecodeError:
+                continue
+
+            if filename == old_name:
+                self.update_directory_entry_name(i, new_name)
+                return
+
+        print(f"File {old_name} not found in the root directory.")
+
+    def update_directory_entry_name(self, index, new_name):
+        """Update a directory entry with a new file name."""
+        directory_offset = self.root_dir_start_sector * self.bytes_per_sector + index * 32
+        self.disk.seek(directory_offset)
+
+        filename, ext = os.path.splitext(new_name)
+        filename = filename.upper()[:8].ljust(8)
+        ext = ext.replace('.', '').upper()[:3].ljust(3)
+
+        # Read the current entry
+        entry = bytearray(self.disk.read(32))
+
+        # Update the name and extension
+        entry[:8] = filename.encode('latin1')
+        entry[8:11] = ext.encode('latin1')
+
+        # Write the updated entry back to the directory
+        self.disk.seek(directory_offset)
+        self.disk.write(entry)
+
 
 if __name__ == "__main__":
     disk_image_path = "disco1.img"
     fat16_disk = FAT16Disk(disk_image_path)
+
+    fat16_disk.open_disk()
     fat16_disk.read_boot_sector()
-    print("Inserting file")
-    # fat16_disk.insert_file ("leo.txt")
+    fat16_disk.read_file_content(23, 20)
+    # fat16_disk.insert_file("leo.txt")
+    # print("Renaming file")
+    # fat16_disk.rename_file("leo.txt", "leo1.txt")
