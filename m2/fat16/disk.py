@@ -119,7 +119,10 @@ class FAT16Disk:
         cluster_offset = ((cluster - 2) * self.sectors_per_cluster) + self.data_start_sector
         self.disk.seek(cluster_offset * self.bytes_per_sector)
         content = self.disk.read(size)
-        print(f"Content of file:\n{content.decode('latin1', errors='replace')}")
+        # Currently this decodes text, if we want based on the image extension we can do so
+        print(
+            f"Content of file:\n{content.decode('latin1', errors='replace')}"
+        )  # errors replace just in case it gets bugged by encoding / decoding
 
     def find_free_directory_entry(self):
         """Find a free directory entry in the root directory."""
@@ -258,12 +261,15 @@ class FAT16Disk:
         self.disk.seek(directory_offset)
         self.disk.write(entry)
 
+    def delete_file(self, file_name):
+        """Delete a file from the FAT16 disk image, by name"""
+
 
 if __name__ == "__main__":
     disk_image_path = "disco1.img"
     fat16_disk = FAT16Disk(disk_image_path)
     fat16_disk.read_boot_sector()
-    # fat16_disk.insert_file("leo.txt")
+    # fat16_disk.insert_file("profile.jpeg")
     # fat16_disk.insert_file("banana.txt")
     # print("Renaming file")
     # fat16_disk.rename_file("leo.txt", "leo1.txt")
